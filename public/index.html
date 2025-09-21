@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>국민연금 사업장 가입현황 시각화</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏢 국민연금 사업장 가입현황 시각화</h1>
+            <p>사업장명별 시간에 따른 퇴사자/입사자/총 인원 변화를 확인하세요</p>
+        </header>
+
+        <main>
+            <!-- 검색 및 필터 섹션 -->
+            <section class="search-section">
+                <div class="search-container">
+                    <div class="search-input-group">
+                        <label for="workplaceName">사업장명:</label>
+                        <input type="text" id="workplaceName" placeholder="사업장명을 입력하세요 (예: 삼성전자)" />
+                    </div>
+
+                    <div class="date-input-group">
+                        <label for="startDate">시작 기간:</label>
+                        <input type="month" id="startDate" value="2023-01" />
+
+                        <label for="endDate">종료 기간:</label>
+                        <input type="month" id="endDate" value="2023-12" />
+                    </div>
+
+                    <button id="searchBtn" class="search-btn">🔍 데이터 조회</button>
+                    <button id="compareBtn" class="compare-btn">📊 사업장 비교</button>
+                </div>
+            </section>
+
+            <!-- 로딩 및 상태 표시 -->
+            <section class="status-section">
+                <div id="loadingIndicator" class="loading hidden">
+                    <div class="spinner"></div>
+                    <span>데이터를 불러오는 중...</span>
+                </div>
+
+                <div id="errorMessage" class="error-message hidden"></div>
+
+                <div id="dataInfo" class="data-info hidden">
+                    <h3>📈 데이터 요약</h3>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="label">총 신규입사자:</span>
+                            <span id="totalNewHires" class="value">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">총 퇴사자:</span>
+                            <span id="totalResignations" class="value">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">현재 총 인원:</span>
+                            <span id="currentTotal" class="value">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">월평균 변화:</span>
+                            <span id="averageChange" class="value">-</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 차트 섹션 -->
+            <section class="chart-section">
+                <div class="chart-container">
+                    <h3>시계열 차트</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="timeSeriesChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3>월별 변화 차트</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="monthlyChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 데이터 테이블 섹션 -->
+            <section class="table-section">
+                <h3>📋 상세 데이터</h3>
+                <div class="table-wrapper">
+                    <table id="dataTable">
+                        <thead>
+                            <tr>
+                                <th>기간</th>
+                                <th>신규입사자</th>
+                                <th>퇴사자</th>
+                                <th>총 인원</th>
+                                <th>순 변화</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTableBody">
+                            <tr>
+                                <td colspan="5" class="no-data">데이터를 조회해주세요</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>데이터 출처: 공공데이터포털 - 국민연금공단 사업장가입현황정보</p>
+        </footer>
+    </div>
+
+    <script src="js/main.js"></script>
+</body>
+</html>
