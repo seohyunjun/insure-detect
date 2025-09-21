@@ -12,7 +12,8 @@
     "collect-data-force": "node scripts/collect-data.js --force",
     "collect-all": "node scripts/collect-all-endpoints.js",
     "data-status": "node scripts/data-status.js",
-    "clean-data": "node scripts/collect-data.js && node scripts/data-status.js"
+    "clean-data": "node scripts/collect-data.js && node scripts/data-status.js",
+    "test-performance": "node test-parallel-performance.js"
   },
   "keywords": [
     "data-visualization",

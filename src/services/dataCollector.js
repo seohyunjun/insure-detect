@@ -172,130 +172,142 @@ class DataCollector {
         let collectedCount = 0;
 
         try {
-            do {
-                console.log(`📡 페이지 ${page}/${totalPages} 수집 중...`);
+            // 첫 번째 페이지를 먼저 가져와서 총 페이지 수 확인
+            console.log(`📡 첫 번째 페이지로 총 페이지 수 확인 중...`);
 
-                // URL 구성 시 중복 방지
-                let url;
-                if (uddi.startsWith('15083277/v1/')) {
-                    // 15083277 namespace 엔드포인트인 경우
-                    url = `https://api.odcloud.kr/api/${uddi}`;
-                } else {
-                    // 기존 uddi 형식인 경우
-                    url = `${this.baseUrl}/${uddi}`;
+            // URL 구성 시 중복 방지
+            let baseUrl;
+            if (uddi.startsWith('15083277/v1/')) {
+                baseUrl = `https://api.odcloud.kr/api/${uddi}`;
+            } else {
+                baseUrl = `${this.baseUrl}/${uddi}`;
+            }
+            console.log(`🔗 기본 URL: ${baseUrl}`);
+
+            const firstResponse = await axios.get(baseUrl, {
+                params: {
+                    serviceKey: this.apiKey,
+                    page: 1,
+                    perPage: 1000
+                },
+                timeout: 30000,
+                headers: {
+                    'Accept': 'application/json',
+                    'User-Agent': 'DataCollector/1.0'
                 }
-                console.log(`🔗 요청 URL: ${url}`);
+            });
 
-                const response = await axios.get(url, {
-                    params: {
-                        serviceKey: this.apiKey,
-                        page: page,
-                        perPage: 1000
-                    },
-                    timeout: 30000,
-                    headers: {
-                        'Accept': 'application/json',
-                        'User-Agent': 'DataCollector/1.0'
+            // 첫 번째 응답으로 총 페이지 수 계산
+            let totalCount = 0;
+            if (firstResponse.data && firstResponse.data.data && Array.isArray(firstResponse.data.data)) {
+                totalCount = firstResponse.data.totalCount || firstResponse.data.matchCount || 0;
+                totalPages = Math.ceil(totalCount / 1000);
+                allData.push(...firstResponse.data.data);
+                collectedCount += firstResponse.data.data.length;
+            } else if (firstResponse.data && Array.isArray(firstResponse.data)) {
+                totalCount = firstResponse.data.length;
+                totalPages = 1;
+                allData.push(...firstResponse.data);
+                collectedCount += firstResponse.data.length;
+            } else {
+                console.log(`⚠️ 예상치 못한 응답 형식`);
+                totalPages = 1;
+            }
+
+            console.log(`📊 총 ${totalCount.toLocaleString()}개 레코드, ${totalPages}페이지 발견`);
+
+            // 로그 기록
+            const responseLogEntry = {
+                timestamp: new Date().toISOString(),
+                type: 'api_response',
+                requestUrl: baseUrl,
+                page: 1,
+                responseStatus: firstResponse.status,
+                responseStatusText: firstResponse.statusText,
+                totalCount: totalCount,
+                totalPages: totalPages
+            };
+            await this.appendLog(logFile, responseLogEntry);
+
+            // 나머지 페이지들을 병렬로 처리 (배치 단위로)
+            if (totalPages > 1) {
+                const batchSize = 5; // 동시에 처리할 페이지 수
+                const maxPages = Math.min(totalPages, 1000); // 최대 1000페이지까지
+
+                for (let startPage = 2; startPage <= maxPages; startPage += batchSize) {
+                    const endPage = Math.min(startPage + batchSize - 1, maxPages);
+                    const pageRange = Array.from({length: endPage - startPage + 1}, (_, i) => startPage + i);
+
+                    console.log(`🚀 페이지 ${startPage}-${endPage} 병렬 처리 중... (${pageRange.length}개 페이지)`);
+
+                    // 페이지별 요청을 병렬로 실행
+                    const pagePromises = pageRange.map(async (pageNum) => {
+                        try {
+                            const response = await axios.get(baseUrl, {
+                                params: {
+                                    serviceKey: this.apiKey,
+                                    page: pageNum,
+                                    perPage: 1000
+                                },
+                                timeout: 30000,
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'User-Agent': 'DataCollector/1.0'
+                                }
+                            });
+
+                            let pageData = [];
+                            if (response.data && response.data.data && Array.isArray(response.data.data)) {
+                                pageData = response.data.data;
+                            } else if (response.data && Array.isArray(response.data)) {
+                                pageData = response.data;
+                            }
+
+                            console.log(`  ✅ 페이지 ${pageNum}: ${pageData.length}개 수집`);
+
+                            return {
+                                page: pageNum,
+                                data: pageData,
+                                success: true
+                            };
+                        } catch (error) {
+                            console.warn(`  ⚠️ 페이지 ${pageNum} 수집 실패: ${error.message}`);
+                            return {
+                                page: pageNum,
+                                data: [],
+                                success: false,
+                                error: error.message
+                            };
+                        }
+                    });
+
+                    // 배치 내 모든 페이지 요청 완료 대기
+                    const batchResults = await Promise.all(pagePromises);
+
+                    // 결과 처리
+                    for (const result of batchResults) {
+                        if (result.success && result.data.length > 0) {
+                            allData.push(...result.data);
+                            collectedCount += result.data.length;
+                        }
                     }
-                });
 
-                let pageData = [];
-                let pageCount = 0;
-                let totalCount = 0;
-
-                // API 응답을 로그에 기록 (처음 몇 글자만)
-                const responsePreview = JSON.stringify(response.data).substring(0, 500);
-                // console.log(`📄 API 응답 미리보기: ${responsePreview}...`);
-
-                // 응답을 로그 파일에 기록
-                const responseLogEntry = {
-                    timestamp: new Date().toISOString(),
-                    type: 'api_response',
-                    requestUrl: url,
-                    page: page,
-                    responseStatus: response.status,
-                    responseStatusText: response.statusText,
-                    responseHeaders: response.headers,
-                    responsePreview: responsePreview,
-                    fullResponseSize: JSON.stringify(response.data).length
-                };
-                await this.appendLog(logFile, responseLogEntry);
-
-                // Open Data Cloud API 응답 형식 처리
-                if (response.data && response.data.data && Array.isArray(response.data.data)) {
-                    pageData = response.data.data;
-                    pageCount = response.data.currentCount || pageData.length;
-                    totalCount = response.data.totalCount || response.data.matchCount || 0;
-                    totalPages = Math.ceil(totalCount / 1000);
-                } else if (response.data && Array.isArray(response.data)) {
-                    pageData = response.data;
-                    pageCount = pageData.length;
-                    totalCount = pageData.length;
-                    totalPages = 1;
-                } else {
-                    console.log(`⚠️ 페이지 ${page}: 예상치 못한 응답 형식`);
-
-                    // 예상치 못한 응답 형식을 로그에 기록
-                    const unexpectedResponseLog = {
-                        timestamp: new Date().toISOString(),
-                        type: 'unexpected_response',
-                        requestUrl: url,
-                        page: page,
-                        responseData: response.data,
-                        responseType: typeof response.data,
-                        responseKeys: response.data ? Object.keys(response.data) : null,
-                        isArray: Array.isArray(response.data),
-                        hasDataProperty: response.data && response.data.hasOwnProperty('data')
-                    };
-                    await this.appendLog(logFile, unexpectedResponseLog);
-                    break;
-                }
-
-                if (pageData.length > 0) {
-                    allData.push(...pageData);
-                    collectedCount += pageData.length;
-
-                    // 메모리 사용량 확인
+                    // 메모리 사용량 확인 및 정리
                     const memoryUsage = this.getMemoryUsage();
-                    console.log(`  ✅ ${pageData.length}개 데이터 수집 (누적: ${collectedCount}/${totalCount}) - 메모리: ${memoryUsage.usedMB}MB`);
+                    console.log(`  📊 배치 완료: ${collectedCount.toLocaleString()}/${totalCount.toLocaleString()}개 수집 - 메모리: ${memoryUsage.usedMB}MB`);
 
-                    // 메모리 사용량이 너무 높으면 경고
-                    if (memoryUsage.usedMB > 1000) {
-                        console.log(`  ⚠️ 높은 메모리 사용량 감지: ${memoryUsage.usedMB}MB`);
-                        if (global.gc) {
-                            global.gc();
-                            const afterGC = this.getMemoryUsage();
-                            console.log(`  🧹 가비지 컬렉션 후: ${afterGC.usedMB}MB`);
-                        }
+                    if (memoryUsage.usedMB > 1000 && global.gc) {
+                        global.gc();
+                        const afterGC = this.getMemoryUsage();
+                        console.log(`  🧹 가비지 컬렉션 후: ${afterGC.usedMB}MB`);
                     }
 
-                    // 진행 상황을 로그 파일에 기록
-                    const logEntry = {
-                        timestamp: new Date().toISOString(),
-                        requestUrl: url,
-                        uddi: uddi,
-                        page: page,
-                        pageCount: pageData.length,
-                        totalCollected: collectedCount,
-                        totalCount: totalCount,
-                        params: {
-                            serviceKey: this.apiKey ? '***설정됨***' : '미설정',
-                            page: page,
-                            perPage: 1000
-                        }
-                    };
-                    await this.appendLog(logFile, logEntry);
-                } else {
-                    console.log(`  ⚠️ 페이지 ${page}: 데이터 없음`);
-                    break;
+                    // 배치 간 딜레이 (API 제한 고려)
+                    await new Promise(resolve => setTimeout(resolve, 500));
                 }
+            }
 
-                page++;
-
-                // API 호출 제한을 고려한 딜레이
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-            } while (page <= totalPages && page <= 1000); // 최대 1000페이지까지만
+            console.log(`🎉 병렬 수집 완료: 총 ${collectedCount.toLocaleString()}개 레코드`)
 
             // 데이터 정리 및 스키마 추출
             const { data: cleanedData, schema: parquetSchema, types: columnTypes } = cleanDataArray(allData);
@@ -666,12 +678,13 @@ class DataCollector {
             console.log(`📁 발견된 파일: ${allFiles.length}개`);
             allFiles.forEach(file => console.log(`  - ${file.name}`));
 
-            // 스트리밍 방식으로 파일을 읽으면서 필터링된 데이터만 수집
+            // 병렬로 파일들을 처리하여 성능 향상
             let allData = [];
             let combinedMetadata = null;
             let totalProcessedRecords = 0;
 
-            for (const fileInfo of allFiles) {
+            // 파일을 병렬로 처리하기 위한 Promise 배열 생성
+            const fileProcessingPromises = allFiles.map(async (fileInfo) => {
                 const filePath = path.join(this.sourceDir, fileInfo.name);
 
                 // 파일명에서 날짜 추출 (다양한 패턴 지원)
@@ -682,10 +695,12 @@ class DataCollector {
                     monthYear = fileInfo.name.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.(parquet|json)$/)?.[1];
                 }
 
-                console.log(`📖 ${fileInfo.name} 로드 중... (${monthYear})`);
+                console.log(`📖 ${fileInfo.name} 로드 시작... (${monthYear})`);
 
                 let fileMetadata;
+                let fileData = [];
                 let filteredCount = 0;
+                let recordCount = 0;
 
                 if (fileInfo.type === 'parquet') {
                     // Parquet 파일 스트리밍 읽기
@@ -693,11 +708,9 @@ class DataCollector {
                     const cursor = reader.getCursor();
 
                     let record = null;
-                    let recordCount = 0;
 
                     while (record = await cursor.next()) {
                         recordCount++;
-                        totalProcessedRecords++;
 
                         // 사업장명 필터링 (제공된 경우에만)
                         if (workplaceNameFilter) {
@@ -707,18 +720,13 @@ class DataCollector {
                             }
                         }
 
-                        allData.push(record);
+                        fileData.push(record);
                         filteredCount++;
 
-                        // 주기적으로 메모리 정리 및 진행상황 표시
+                        // 주기적으로 진행상황 표시
                         if (recordCount % 10000 === 0) {
                             const memUsage = this.getMemoryUsage();
-                            console.log(`    📊 처리 중: ${recordCount.toLocaleString()}개, 필터링됨: ${filteredCount.toLocaleString()}개 (메모리: ${memUsage.usedMB}MB)`);
-
-                            // 메모리 사용량이 높으면 가비지 컬렉션
-                            if (memUsage.usedMB > 2000 && global.gc) {
-                                global.gc();
-                            }
+                            console.log(`    📊 ${fileInfo.name}: ${recordCount.toLocaleString()}개 처리, ${filteredCount.toLocaleString()}개 필터링 (메모리: ${memUsage.usedMB}MB)`);
                         }
                     }
 
@@ -743,7 +751,7 @@ class DataCollector {
                     // JSON 데이터도 스트리밍 방식으로 필터링
                     for (let i = 0; i < jsonData.data.length; i++) {
                         const record = jsonData.data[i];
-                        totalProcessedRecords++;
+                        recordCount++;
 
                         // 사업장명 필터링 (제공된 경우에만)
                         if (workplaceNameFilter) {
@@ -753,28 +761,48 @@ class DataCollector {
                             }
                         }
 
-                        allData.push(record);
+                        fileData.push(record);
                         filteredCount++;
 
                         // 주기적으로 진행상황 표시
                         if ((i + 1) % 10000 === 0) {
-                            const memUsage = this.getMemoryUsage();
-                            console.log(`    📊 처리 중: ${(i + 1).toLocaleString()}개, 필터링됨: ${filteredCount.toLocaleString()}개 (메모리: ${memUsage.usedMB}MB)`);
+                            console.log(`    📊 ${fileInfo.name}: ${(i + 1).toLocaleString()}개 처리, ${filteredCount.toLocaleString()}개 필터링`);
                         }
                     }
                 }
 
+                console.log(`  ✅ ${fileInfo.name}: ${filteredCount.toLocaleString()}개 레코드 수집 완료`);
+
+                return {
+                    fileName: fileInfo.name,
+                    monthYear,
+                    data: fileData,
+                    metadata: fileMetadata,
+                    recordCount,
+                    filteredCount
+                };
+            });
+
+            // 모든 파일 처리를 병렬로 실행
+            console.log(`🚀 ${allFiles.length}개 파일을 병렬로 처리 중...`);
+            const fileResults = await Promise.all(fileProcessingPromises);
+
+            // 결과를 합치기
+            for (const result of fileResults) {
+                allData.push(...result.data);
+                totalProcessedRecords += result.recordCount;
+
                 // 첫 번째 파일의 메타데이터를 기본으로 사용
                 if (!combinedMetadata) {
-                    combinedMetadata = { ...fileMetadata };
+                    combinedMetadata = { ...result.metadata };
                 }
 
-                console.log(`  ✅ ${filteredCount.toLocaleString()}개 레코드 수집 (총 ${allData.length.toLocaleString()}개)`);
+                console.log(`🔗 ${result.fileName} 병합 완료: ${result.filteredCount.toLocaleString()}개 레코드`);
+            }
 
-                // 메모리 정리
-                if (global.gc) {
-                    global.gc();
-                }
+            // 메모리 정리
+            if (global.gc) {
+                global.gc();
             }
 
             // 통합 메타데이터 생성
