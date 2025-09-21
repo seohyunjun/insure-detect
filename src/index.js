@@ -89,8 +89,8 @@ app.post('/api/workplace-data', async (req, res) => {
 
         console.log(`데이터 조회 요청: ${workplaceName} (${startDate} ~ ${endDate})`);
 
-        // 로컬 데이터에서 기간별로 모든 파일 로드
-        const result = await dataCollector.loadDataByDateRange(startDate, endDate);
+        // 로컬 데이터에서 기간별로 모든 파일 로드 (스트리밍 방식으로 사업장명 필터링 포함)
+        const result = await dataCollector.loadDataByDateRange(startDate, endDate, 'pension_workplace', workplaceName);
 
         if (!result.success) {
             return res.status(404).json({
@@ -100,38 +100,24 @@ app.post('/api/workplace-data', async (req, res) => {
         }
 
         let rawData = result.data;
-        console.log(`✅ 로컬 데이터 로드 완료: ${rawData.length}개 레코드 (${result.filesLoaded || 1}개 파일)`);
+        console.log(`✅ 로컬 데이터 로드 완료: ${rawData.length}개 레코드 (${result.metadata.totalProcessedRecords || 0}개 중 필터링, ${result.filesLoaded || 1}개 파일)`);
 
         // 추가 기간 필터링 (파일 기반 로드에서 누락된 부분 처리)
         if (startDate && endDate) {
+            const beforeFilter = rawData.length;
             rawData = dataProcessor.filterDataByDateRange(rawData, startDate, endDate);
-            console.log(`📊 기간별 데이터 필터링 결과: ${rawData.length}개 레코드`);
+            console.log(`📊 기간별 데이터 필터링 결과: ${beforeFilter}개 → ${rawData.length}개 레코드`);
         }
 
-        // 사업장명 부분 매칭을 위한 클라이언트 사이드 필터링
+        // 이미 스트리밍 중에 사업장명 필터링이 완료되었으므로 추가 필터링 불필요
         if (rawData && rawData.length > 0) {
-            const originalCount = rawData.length;
-
-            // 부분 매칭으로 필터링 (대소문자 구분 없이)
-            rawData = rawData.filter(item => {
-                const itemName = item['사업장명'];
-                if (!itemName) return false;
-
-                // 검색어가 사업장명에 포함되는지 확인 (대소문자 구분 없이)
-                return itemName.toLowerCase().includes(workplaceName.toLowerCase());
+            console.log(`🎯 매칭된 사업장들 (상위 20개):`);
+            const uniqueNames = [...new Set(rawData.map(item => item['사업장명']))];
+            uniqueNames.slice(0, 20).forEach(name => {
+                console.log(`  - ${name}`);
             });
-
-            console.log(`📊 필터링 결과: ${originalCount}개 → ${rawData.length}개`);
-
-            if (rawData.length > 0) {
-                console.log(`🎯 매칭된 사업장들 (상위 20개):`);
-                const uniqueNames = [...new Set(rawData.map(item => item['사업장명']))];
-                uniqueNames.slice(0, 20).forEach(name => {
-                    console.log(`  - ${name}`);
-                });
-                if (uniqueNames.length > 20) {
-                    console.log(`  - ... 외 ${uniqueNames.length - 20}개`);
-                }
+            if (uniqueNames.length > 20) {
+                console.log(`  - ... 외 ${uniqueNames.length - 20}개`);
             }
         }
 

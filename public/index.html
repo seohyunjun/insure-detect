@@ -3,47 +3,135 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>국민연금 사업장 가입현황 시각화</title>
+    <title>국민연금 사업장 가입현황</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🏢 국민연금 사업장 가입현황 시각화</h1>
-            <p>사업장명별 시간에 따른 퇴사자/입사자/총 인원 변화를 확인하세요</p>
+            <h1>국민연금 사업장 가입현황</h1>
+            <p>사업장별 시계열 데이터 분석</p>
         </header>
 
         <main>
             <!-- 검색 및 필터 섹션 -->
-            <section class="search-section">
+            <section class="search-section" role="search" aria-label="사업장 데이터 검색">
                 <div class="search-container">
-                    <div class="search-input-group">
-                        <label for="workplaceName">사업장명:</label>
-                        <input type="text" id="workplaceName" placeholder="사업장명을 입력하세요 (예: 삼성전자)" />
+                    <!-- 입력 필드 섹션 -->
+                    <div class="input-fields-section">
+                        <h2 class="section-title">검색 조건</h2>
+
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="workplaceName" class="input-label">
+                                    사업장명
+                                    <span class="required-indicator" aria-label="필수 입력">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="workplaceName"
+                                    class="form-input"
+                                    placeholder="예: 삼성전자, LG전자, 현대자동차"
+                                    aria-describedby="workplace-help"
+                                    required
+                                />
+                                <small id="workplace-help" class="help-text">
+                                    회사명의 일부만 입력해도 검색 가능합니다
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="form-row date-row">
+                            <div class="input-group">
+                                <label for="startDate" class="input-label">시작 기간</label>
+                                <select
+                                    id="startDate"
+                                    class="form-select"
+                                    aria-describedby="date-help"
+                                >
+                                    <option value="">시작 기간 선택</option>
+                                </select>
+                            </div>
+
+                            <div class="date-separator" aria-hidden="true">~</div>
+
+                            <div class="input-group">
+                                <label for="endDate" class="input-label">종료 기간</label>
+                                <select
+                                    id="endDate"
+                                    class="form-select"
+                                    aria-describedby="date-help"
+                                >
+                                    <option value="">종료 기간 선택</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <small id="date-help" class="help-text">
+                            분석할 기간을 선택하세요. 단일 월 선택도 가능합니다
+                        </small>
                     </div>
 
-                    <div class="date-input-group">
-                        <label for="startDate">시작 기간:</label>
-                        <select id="startDate" class="date-select">
-                            <option value="">기간을 선택하세요...</option>
-                        </select>
-
-                        <label for="endDate">종료 기간:</label>
-                        <select id="endDate" class="date-select">
-                            <option value="">기간을 선택하세요...</option>
-                        </select>
+                    <!-- 빠른 선택 섹션 -->
+                    <div class="quick-select-section">
+                        <fieldset class="quick-select-fieldset">
+                            <legend class="quick-select-legend">빠른 기간 선택</legend>
+                            <div class="quick-select-options">
+                                <label class="quick-option">
+                                    <input type="radio" name="quickPeriod" value="latest" class="quick-radio">
+                                    <span class="quick-label">최신 데이터</span>
+                                    <small class="quick-desc">가장 최근 월</small>
+                                </label>
+                                <label class="quick-option">
+                                    <input type="radio" name="quickPeriod" value="recent" class="quick-radio">
+                                    <span class="quick-label">최근 3개월</span>
+                                    <small class="quick-desc">3개월 트렌드</small>
+                                </label>
+                                <label class="quick-option">
+                                    <input type="radio" name="quickPeriod" value="all" class="quick-radio">
+                                    <span class="quick-label">전체 기간</span>
+                                    <small class="quick-desc">모든 데이터</small>
+                                </label>
+                            </div>
+                        </fieldset>
                     </div>
 
-                    <div class="quick-select">
-                        <span>빠른 선택:</span>
-                        <button class="quick-btn" data-period="latest">최신 데이터</button>
-                        <button class="quick-btn" data-period="recent">최근 3개월</button>
-                        <button class="quick-btn" data-period="all">전체 기간</button>
-                    </div>
+                    <!-- 액션 버튼 섹션 -->
+                    <div class="action-buttons-section">
+                        <button
+                            id="searchBtn"
+                            class="btn btn-primary"
+                            type="button"
+                            aria-describedby="search-help"
+                        >
+                            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                            </svg>
+                            데이터 조회
+                        </button>
 
-                    <button id="searchBtn" class="search-btn">🔍 데이터 조회</button>
-                    <button id="compareBtn" class="compare-btn">📊 사업장 비교</button>
+                        <button
+                            id="compareBtn"
+                            class="btn btn-secondary"
+                            type="button"
+                            aria-describedby="compare-help"
+                        >
+                            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4zm2 2H5V5h14v14zm0-16H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
+                            </svg>
+                            사업장 비교
+                        </button>
+
+                        <div class="button-help-texts">
+                            <small id="search-help" class="help-text">
+                                선택한 조건으로 데이터를 조회합니다
+                            </small>
+                            <small id="compare-help" class="help-text">
+                                여러 사업장을 동시에 비교 분석합니다
+                            </small>
+                        </div>
+                    </div>
                 </div>
             </section>
 

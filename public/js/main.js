@@ -27,10 +27,12 @@ class PensionVisualization {
             }
         });
 
-        // 빠른 선택 버튼들
-        document.querySelectorAll('.quick-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                this.handleQuickSelect(e.target.dataset.period);
+        // 빠른 선택 라디오 버튼들
+        document.querySelectorAll('input[name="quickPeriod"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.handleQuickSelect(e.target.value);
+                }
             });
         });
 
@@ -539,13 +541,11 @@ class PensionVisualization {
 
     // 빠른 선택 처리
     handleQuickSelect(period) {
-        // 모든 버튼에서 active 클래스 제거
-        document.querySelectorAll('.quick-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-
-        // 클릭된 버튼에 active 클래스 추가
-        document.querySelector(`[data-period="${period}"]`).classList.add('active');
+        // 해당 라디오 버튼 선택
+        const radioButton = document.querySelector(`input[name="quickPeriod"][value="${period}"]`);
+        if (radioButton) {
+            radioButton.checked = true;
+        }
 
         const startSelect = document.getElementById('startDate');
         const endSelect = document.getElementById('endDate');

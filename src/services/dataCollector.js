@@ -585,10 +585,13 @@ class DataCollector {
         }
     }
 
-    // 기간별로 모든 파일을 로드하는 새로운 메서드
-    async loadDataByDateRange(startDate, endDate, uddiName = 'pension_workplace') {
+    // 기간별로 모든 파일을 로드하는 새로운 메서드 (스트리밍 방식으로 메모리 최적화)
+    async loadDataByDateRange(startDate, endDate, uddiName = 'pension_workplace', workplaceNameFilter = null) {
         try {
             console.log(`📅 기간별 데이터 로드: ${startDate} ~ ${endDate}`);
+            if (workplaceNameFilter) {
+                console.log(`🔍 사업장명 필터: ${workplaceNameFilter}`);
+            }
 
             const files = await fs.readdir(this.sourceDir);
 
@@ -663,9 +666,10 @@ class DataCollector {
             console.log(`📁 발견된 파일: ${allFiles.length}개`);
             allFiles.forEach(file => console.log(`  - ${file.name}`));
 
-            // 모든 파일의 데이터를 합치기
+            // 스트리밍 방식으로 파일을 읽으면서 필터링된 데이터만 수집
             let allData = [];
             let combinedMetadata = null;
+            let totalProcessedRecords = 0;
 
             for (const fileInfo of allFiles) {
                 const filePath = path.join(this.sourceDir, fileInfo.name);
@@ -680,17 +684,42 @@ class DataCollector {
 
                 console.log(`📖 ${fileInfo.name} 로드 중... (${monthYear})`);
 
-                let fileData, fileMetadata;
+                let fileMetadata;
+                let filteredCount = 0;
 
                 if (fileInfo.type === 'parquet') {
-                    // Parquet 파일 로드
+                    // Parquet 파일 스트리밍 읽기
                     const reader = await parquet.ParquetReader.openFile(filePath);
                     const cursor = reader.getCursor();
-                    const records = [];
 
                     let record = null;
+                    let recordCount = 0;
+
                     while (record = await cursor.next()) {
-                        records.push(record);
+                        recordCount++;
+                        totalProcessedRecords++;
+
+                        // 사업장명 필터링 (제공된 경우에만)
+                        if (workplaceNameFilter) {
+                            const workplaceName = record['사업장명'];
+                            if (!workplaceName || !workplaceName.toLowerCase().includes(workplaceNameFilter.toLowerCase())) {
+                                continue; // 조건에 맞지 않으면 스킵
+                            }
+                        }
+
+                        allData.push(record);
+                        filteredCount++;
+
+                        // 주기적으로 메모리 정리 및 진행상황 표시
+                        if (recordCount % 10000 === 0) {
+                            const memUsage = this.getMemoryUsage();
+                            console.log(`    📊 처리 중: ${recordCount.toLocaleString()}개, 필터링됨: ${filteredCount.toLocaleString()}개 (메모리: ${memUsage.usedMB}MB)`);
+
+                            // 메모리 사용량이 높으면 가비지 컬렉션
+                            if (memUsage.usedMB > 2000 && global.gc) {
+                                global.gc();
+                            }
+                        }
                     }
 
                     await reader.close();
@@ -705,32 +734,58 @@ class DataCollector {
                         fileMetadata = { uddiName, monthYear };
                     }
 
-                    fileData = records;
                 } else {
-                    // JSON 파일 로드
+                    // JSON 파일 처리 (호환성)
                     const content = await fs.readFile(filePath, 'utf8');
                     const jsonData = JSON.parse(content);
                     fileMetadata = jsonData.metadata;
-                    fileData = jsonData.data;
-                }
 
-                allData = allData.concat(fileData);
+                    // JSON 데이터도 스트리밍 방식으로 필터링
+                    for (let i = 0; i < jsonData.data.length; i++) {
+                        const record = jsonData.data[i];
+                        totalProcessedRecords++;
+
+                        // 사업장명 필터링 (제공된 경우에만)
+                        if (workplaceNameFilter) {
+                            const workplaceName = record['사업장명'];
+                            if (!workplaceName || !workplaceName.toLowerCase().includes(workplaceNameFilter.toLowerCase())) {
+                                continue; // 조건에 맞지 않으면 스킵
+                            }
+                        }
+
+                        allData.push(record);
+                        filteredCount++;
+
+                        // 주기적으로 진행상황 표시
+                        if ((i + 1) % 10000 === 0) {
+                            const memUsage = this.getMemoryUsage();
+                            console.log(`    📊 처리 중: ${(i + 1).toLocaleString()}개, 필터링됨: ${filteredCount.toLocaleString()}개 (메모리: ${memUsage.usedMB}MB)`);
+                        }
+                    }
+                }
 
                 // 첫 번째 파일의 메타데이터를 기본으로 사용
                 if (!combinedMetadata) {
                     combinedMetadata = { ...fileMetadata };
                 }
 
-                console.log(`  ✅ ${fileData.length}개 레코드 로드 (누적: ${allData.length}개)`);
+                console.log(`  ✅ ${filteredCount.toLocaleString()}개 레코드 수집 (총 ${allData.length.toLocaleString()}개)`);
+
+                // 메모리 정리
+                if (global.gc) {
+                    global.gc();
+                }
             }
 
             // 통합 메타데이터 생성
             combinedMetadata.totalRecords = allData.length;
+            combinedMetadata.totalProcessedRecords = totalProcessedRecords;
             combinedMetadata.dateRange = { startDate, endDate };
             combinedMetadata.filesCount = allFiles.length;
             combinedMetadata.loadedAt = new Date().toISOString();
+            combinedMetadata.workplaceNameFilter = workplaceNameFilter;
 
-            console.log(`🎉 기간별 데이터 로드 완료: ${allData.length}개 레코드 (${allFiles.length}개 파일)`);
+            console.log(`🎉 기간별 데이터 로드 완료: ${allData.length.toLocaleString()}개 레코드 수집 (${totalProcessedRecords.toLocaleString()}개 중, ${allFiles.length}개 파일)`);
 
             return {
                 success: true,
