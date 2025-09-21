@@ -5,8 +5,9 @@ class PensionVisualization {
         this.init();
     }
 
-    init() {
+    async init() {
         this.bindEvents();
+        await this.loadAvailablePeriods();
         this.setDefaultDates();
     }
 
@@ -25,15 +26,25 @@ class PensionVisualization {
                 this.searchWorkplaceData();
             }
         });
+
+        // 빠른 선택 버튼들
+        document.querySelectorAll('.quick-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.handleQuickSelect(e.target.dataset.period);
+            });
+        });
+
+        // 시작 날짜 변경 시 종료 날짜 자동 조정
+        document.getElementById('startDate').addEventListener('change', (e) => {
+            this.adjustEndDate(e.target.value);
+        });
     }
 
     setDefaultDates() {
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setFullYear(endDate.getFullYear() - 1);
-
-        document.getElementById('startDate').value = this.formatDateForInput(startDate);
-        document.getElementById('endDate').value = this.formatDateForInput(endDate);
+        if (this.availablePeriods && this.availablePeriods.length > 0) {
+            // 최신 데이터로 기본 설정
+            this.handleQuickSelect('latest');
+        }
     }
 
     formatDateForInput(date) {
@@ -487,6 +498,97 @@ class PensionVisualization {
 
     hideDataInfo() {
         document.getElementById('dataInfo').classList.add('hidden');
+    }
+
+    // 사용 가능한 기간 데이터 로드
+    async loadAvailablePeriods() {
+        try {
+            const response = await fetch('/api/available-periods');
+            const result = await response.json();
+
+            if (result.success && result.periods) {
+                this.availablePeriods = result.periods;
+                this.populateDateSelects();
+            }
+        } catch (error) {
+            console.error('사용 가능한 기간 로드 실패:', error);
+        }
+    }
+
+    // 날짜 선택 드롭다운 채우기
+    populateDateSelects() {
+        const startSelect = document.getElementById('startDate');
+        const endSelect = document.getElementById('endDate');
+
+        // 기존 옵션 제거 (첫 번째 빈 옵션 제외)
+        startSelect.innerHTML = '<option value="">기간을 선택하세요...</option>';
+        endSelect.innerHTML = '<option value="">기간을 선택하세요...</option>';
+
+        // 정렬된 기간 추가
+        this.availablePeriods.forEach(period => {
+            const option = document.createElement('option');
+            option.value = period.period;
+
+            const typeLabel = period.type === 'latest' ? '(최신)' : '';
+            option.textContent = `${period.period} ${typeLabel}`;
+
+            startSelect.appendChild(option.cloneNode(true));
+            endSelect.appendChild(option);
+        });
+    }
+
+    // 빠른 선택 처리
+    handleQuickSelect(period) {
+        // 모든 버튼에서 active 클래스 제거
+        document.querySelectorAll('.quick-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+
+        // 클릭된 버튼에 active 클래스 추가
+        document.querySelector(`[data-period="${period}"]`).classList.add('active');
+
+        const startSelect = document.getElementById('startDate');
+        const endSelect = document.getElementById('endDate');
+
+        switch (period) {
+            case 'latest':
+                // 최신 데이터 선택
+                if (this.availablePeriods.length > 0) {
+                    const latest = this.availablePeriods[0].period;
+                    startSelect.value = latest;
+                    endSelect.value = latest;
+                }
+                break;
+
+            case 'recent':
+                // 최근 3개월
+                if (this.availablePeriods.length >= 3) {
+                    startSelect.value = this.availablePeriods[2].period;
+                    endSelect.value = this.availablePeriods[0].period;
+                } else if (this.availablePeriods.length > 0) {
+                    startSelect.value = this.availablePeriods[this.availablePeriods.length - 1].period;
+                    endSelect.value = this.availablePeriods[0].period;
+                }
+                break;
+
+            case 'all':
+                // 전체 기간
+                if (this.availablePeriods.length > 0) {
+                    startSelect.value = this.availablePeriods[this.availablePeriods.length - 1].period;
+                    endSelect.value = this.availablePeriods[0].period;
+                }
+                break;
+        }
+    }
+
+    // 종료 날짜 자동 조정
+    adjustEndDate(startDate) {
+        const endSelect = document.getElementById('endDate');
+
+        if (startDate && !endSelect.value) {
+            // 시작 날짜가 선택되고 종료 날짜가 비어있으면 같은 날짜로 설정
+            endSelect.value = startDate;
+        }
     }
 }
 

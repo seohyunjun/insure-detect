@@ -82,10 +82,63 @@ input[type="text"], input[type="month"] {
     transition: border-color 0.3s ease;
 }
 
-input[type="text"]:focus, input[type="month"]:focus {
+input[type="text"]:focus, input[type="month"]:focus, select:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* 새로운 날짜 선택 UI */
+.date-select {
+    padding: 10px 15px;
+    border: 2px solid #e1e5e9;
+    border-radius: 6px;
+    font-size: 1em;
+    background: white;
+    min-width: 180px;
+    cursor: pointer;
+    transition: border-color 0.3s ease;
+}
+
+.quick-select {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin: 15px 0;
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.quick-select span {
+    font-size: 14px;
+    font-weight: 500;
+    color: #64748b;
+    margin-right: 10px;
+}
+
+.quick-btn {
+    padding: 6px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: white;
+    color: #374151;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.quick-btn:hover {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+    transform: translateY(-1px);
+}
+
+.quick-btn.active {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
 }
 
 .search-btn, .compare-btn {

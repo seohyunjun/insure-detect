@@ -25,10 +25,21 @@
 
                     <div class="date-input-group">
                         <label for="startDate">시작 기간:</label>
-                        <input type="month" id="startDate" value="2023-01" />
+                        <select id="startDate" class="date-select">
+                            <option value="">기간을 선택하세요...</option>
+                        </select>
 
                         <label for="endDate">종료 기간:</label>
-                        <input type="month" id="endDate" value="2023-12" />
+                        <select id="endDate" class="date-select">
+                            <option value="">기간을 선택하세요...</option>
+                        </select>
+                    </div>
+
+                    <div class="quick-select">
+                        <span>빠른 선택:</span>
+                        <button class="quick-btn" data-period="latest">최신 데이터</button>
+                        <button class="quick-btn" data-period="recent">최근 3개월</button>
+                        <button class="quick-btn" data-period="all">전체 기간</button>
                     </div>
 
                     <button id="searchBtn" class="search-btn">🔍 데이터 조회</button>

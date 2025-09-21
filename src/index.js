@@ -316,6 +316,61 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// 사용 가능한 데이터 기간 조회 엔드포인트
+app.get('/api/available-periods', async (req, res) => {
+    try {
+        const fs = require('fs').promises;
+        const path = require('path');
+        const sourceDir = path.join(__dirname, '../source/data');
+
+        const files = await fs.readdir(sourceDir);
+        const availablePeriods = [];
+
+        // 파일에서 기간 정보 추출
+        for (const file of files) {
+            if (file.endsWith('.parquet')) {
+                let period = null;
+                let fileType = null;
+
+                if (file.startsWith('pension_workplace_')) {
+                    const match = file.match(/pension_workplace_(\d{4}-\d{2})\.parquet$/);
+                    if (match) {
+                        period = match[1];
+                        fileType = 'latest';
+                    }
+                } else if (file.startsWith('pension_')) {
+                    const match = file.match(/pension_(\d{4}-\d{2})_(\d{4}-\d{2})\.parquet$/);
+                    if (match) {
+                        // 실제 데이터 기간은 두 번째 날짜
+                        period = match[2];
+                        fileType = 'archive';
+                    }
+                }
+
+                if (period) {
+                    availablePeriods.push({
+                        period,
+                        fileName: file,
+                        type: fileType
+                    });
+                }
+            }
+        }
+
+        // 기간별로 정렬
+        availablePeriods.sort((a, b) => b.period.localeCompare(a.period));
+
+        res.json({
+            success: true,
+            periods: availablePeriods,
+            count: availablePeriods.length
+        });
+    } catch (error) {
+        console.error('사용 가능한 기간 조회 실패:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // 데이터 샘플 확인 엔드포인트 (디버깅용)
 app.get('/api/debug/sample', async (req, res) => {
     try {
