@@ -84,9 +84,46 @@ class DataCollector {
         this.dynamicUddis = {};
         this.uddisLoaded = false;
 
+        // Retry 설정
+        this.maxRetries = 3;
+        this.retryDelay = 1000; // 1초 시작
+        this.timeoutMs = 60000; // 60초로 증가
+
         if (!this.apiKey) {
             throw new Error('API_KEY가 설정되지 않았습니다. .env 파일을 확인해주세요.');
         }
+    }
+
+    async retryApiCall(apiCall, description, maxRetries = this.maxRetries) {
+        let lastError;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                return await apiCall();
+            } catch (error) {
+                lastError = error;
+
+                const isRetryableError =
+                    error.code === 'ECONNABORTED' || // timeout
+                    error.code === 'ENOTFOUND' ||   // DNS error
+                    error.code === 'ECONNRESET' ||  // connection reset
+                    (error.response && error.response.status >= 500) || // server errors
+                    (error.response && error.response.status === 429);  // rate limit
+
+                if (attempt === maxRetries || !isRetryableError) {
+                    console.warn(`  ❌ ${description} 최종 실패 (시도 ${attempt}/${maxRetries}): ${error.message}`);
+                    throw error;
+                }
+
+                const delay = this.retryDelay * Math.pow(2, attempt - 1); // exponential backoff
+                console.warn(`  ⚠️ ${description} 실패 (시도 ${attempt}/${maxRetries}): ${error.message}`);
+                console.log(`  ⏳ ${delay}ms 후 재시도...`);
+
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+
+        throw lastError;
     }
 
     async collectAllData(uddiName = 'pension_workplace', forceUpdate = false) {
@@ -184,18 +221,21 @@ class DataCollector {
             }
             console.log(`🔗 기본 URL: ${baseUrl}`);
 
-            const firstResponse = await axios.get(baseUrl, {
-                params: {
-                    serviceKey: this.apiKey,
-                    page: 1,
-                    perPage: 1000
-                },
-                timeout: 30000,
-                headers: {
-                    'Accept': 'application/json',
-                    'User-Agent': 'DataCollector/1.0'
-                }
-            });
+            const firstResponse = await this.retryApiCall(
+                () => axios.get(baseUrl, {
+                    params: {
+                        serviceKey: this.apiKey,
+                        page: 1,
+                        perPage: 1000
+                    },
+                    timeout: this.timeoutMs,
+                    headers: {
+                        'Accept': 'application/json',
+                        'User-Agent': 'DataCollector/1.0'
+                    }
+                }),
+                `첫 번째 페이지 조회`
+            );
 
             // 첫 번째 응답으로 총 페이지 수 계산
             let totalCount = 0;
@@ -243,18 +283,21 @@ class DataCollector {
                     // 페이지별 요청을 병렬로 실행
                     const pagePromises = pageRange.map(async (pageNum) => {
                         try {
-                            const response = await axios.get(baseUrl, {
-                                params: {
-                                    serviceKey: this.apiKey,
-                                    page: pageNum,
-                                    perPage: 1000
-                                },
-                                timeout: 30000,
-                                headers: {
-                                    'Accept': 'application/json',
-                                    'User-Agent': 'DataCollector/1.0'
-                                }
-                            });
+                            const response = await this.retryApiCall(
+                                () => axios.get(baseUrl, {
+                                    params: {
+                                        serviceKey: this.apiKey,
+                                        page: pageNum,
+                                        perPage: 1000
+                                    },
+                                    timeout: this.timeoutMs,
+                                    headers: {
+                                        'Accept': 'application/json',
+                                        'User-Agent': 'DataCollector/1.0'
+                                    }
+                                }),
+                                `페이지 ${pageNum} 조회`
+                            );
 
                             let pageData = [];
                             if (response.data && response.data.data && Array.isArray(response.data.data)) {
@@ -271,7 +314,7 @@ class DataCollector {
                                 success: true
                             };
                         } catch (error) {
-                            console.warn(`  ⚠️ 페이지 ${pageNum} 수집 실패: ${error.message}`);
+                            console.warn(`  ❌ 페이지 ${pageNum} 최종 실패: ${error.message}`);
                             return {
                                 page: pageNum,
                                 data: [],
@@ -285,11 +328,21 @@ class DataCollector {
                     const batchResults = await Promise.all(pagePromises);
 
                     // 결과 처리
+                    let batchSuccessCount = 0;
+                    let batchFailedCount = 0;
                     for (const result of batchResults) {
                         if (result.success && result.data.length > 0) {
                             allData.push(...result.data);
                             collectedCount += result.data.length;
+                            batchSuccessCount++;
+                        } else if (!result.success) {
+                            batchFailedCount++;
+                            console.warn(`    ❌ 페이지 ${result.page} 영구 실패: ${result.error}`);
                         }
+                    }
+
+                    if (batchFailedCount > 0) {
+                        console.log(`  📊 배치 결과: 성공 ${batchSuccessCount}개, 실패 ${batchFailedCount}개`);
                     }
 
                     // 메모리 사용량 확인 및 정리
@@ -302,8 +355,8 @@ class DataCollector {
                         console.log(`  🧹 가비지 컬렉션 후: ${afterGC.usedMB}MB`);
                     }
 
-                    // 배치 간 딜레이 (API 제한 고려)
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                    // 배치 간 딜레이 (API 제한 고려) - 더 긴 딜레이로 안정성 향상
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                 }
             }
 
@@ -889,13 +942,16 @@ class DataCollector {
             console.log('🔍 OpenAPI 문서에서 엔드포인트 정보를 로드합니다...');
 
             // OpenAPI 문서 가져오기
-            const response = await axios.get('https://infuser.odcloud.kr/oas/docs?namespace=15083277/v1', {
-                timeout: 10000,
-                headers: {
-                    'Accept': 'application/json',
-                    'User-Agent': 'DataCollector/1.0'
-                }
-            });
+            const response = await this.retryApiCall(
+                () => axios.get('https://infuser.odcloud.kr/oas/docs?namespace=15083277/v1', {
+                    timeout: this.timeoutMs,
+                    headers: {
+                        'Accept': 'application/json',
+                        'User-Agent': 'DataCollector/1.0'
+                    }
+                }),
+                'OpenAPI 문서 조회'
+            );
 
             if (response.data && response.data.paths) {
                 const paths = response.data.paths;
@@ -1030,13 +1086,16 @@ class DataCollector {
             console.log('🔍 15083277 namespace의 사용 가능한 엔드포인트를 조회합니다...');
 
             // OpenAPI 문서에서 엔드포인트 정보 가져오기
-            const response = await axios.get('https://infuser.odcloud.kr/oas/docs?namespace=15083277/v1', {
-                timeout: 10000,
-                headers: {
-                    'Accept': 'application/json',
-                    'User-Agent': 'DataCollector/1.0'
-                }
-            });
+            const response = await this.retryApiCall(
+                () => axios.get('https://infuser.odcloud.kr/oas/docs?namespace=15083277/v1', {
+                    timeout: this.timeoutMs,
+                    headers: {
+                        'Accept': 'application/json',
+                        'User-Agent': 'DataCollector/1.0'
+                    }
+                }),
+                'OpenAPI 문서 조회 (getAllAvailableEndpoints)'
+            );
 
             // 응답에서 paths 정보 추출
             let endpoints = {};
@@ -1064,16 +1123,67 @@ class DataCollector {
         }
     }
 
+    async getExistingParquetMonths() {
+        try {
+            const files = await fs.readdir(this.sourceDir);
+            const monthsSet = new Set();
+
+            // parquet 파일들에서 년월 추출
+            files.forEach(file => {
+                if (file.endsWith('.parquet')) {
+                    // pension_YYYY-MM_YYYY-MM.parquet 패턴
+                    const match = file.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.parquet$/);
+                    if (match) {
+                        monthsSet.add(match[1]);
+                    }
+
+                    // pension_workplace_YYYY-MM.parquet 패턴
+                    const workplaceMatch = file.match(/pension_workplace_(\d{4}-\d{2})\.parquet$/);
+                    if (workplaceMatch) {
+                        monthsSet.add(workplaceMatch[1]);
+                    }
+                }
+            });
+
+            return Array.from(monthsSet).sort();
+        } catch (error) {
+            console.warn('⚠️ 기존 parquet 파일 조회 실패:', error.message);
+            return [];
+        }
+    }
+
     async collectAllAvailableData() {
         console.log('🚀 모든 사용 가능한 엔드포인트에서 데이터 수집을 시작합니다...');
 
         // 동적으로 UDDI 로딩
         const allEndpoints = await this.loadDynamicUddis();
 
+        // 기존 parquet 파일들에서 이미 수집된 년월 추출
+        const existingMonths = await this.getExistingParquetMonths();
+        console.log(`📄 기존 parquet 파일이 있는 달: ${existingMonths.join(', ')}`);
+
         const results = [];
 
         for (const [endpointName, endpointPath] of Object.entries(allEndpoints)) {
             if (endpointName === 'namespace_15083277') continue; // 베이스 패턴 스킵
+
+            // endpointName에서 년월 추출 (pension_YYYY-MM 형식)
+            const monthMatch = endpointName.match(/pension_(\d{4}-\d{2})/);
+            if (monthMatch) {
+                const endpointMonth = monthMatch[1];
+                if (existingMonths.includes(endpointMonth)) {
+                    console.log(`⏭️ ${endpointName} 스킵: parquet 파일이 이미 존재함 (${endpointMonth})`);
+                    results.push({
+                        endpoint: endpointName,
+                        success: true,
+                        recordCount: 0,
+                        error: null,
+                        skipped: true,
+                        reason: 'parquet file exists'
+                    });
+                    continue;
+                }
+            }
 
             try {
                 console.log(`\n📡 ${endpointName} 수집 중...`);
@@ -1098,10 +1208,14 @@ class DataCollector {
         console.log('\n🎉 모든 엔드포인트 수집 완료!');
         console.log('='.repeat(50));
         results.forEach(result => {
-            const status = result.success ? '✅' : '❌';
-            console.log(`${status} ${result.endpoint}: ${result.recordCount.toLocaleString()}개 레코드`);
-            if (result.error) {
-                console.log(`   오류: ${result.error}`);
+            if (result.skipped) {
+                console.log(`⏭️ ${result.endpoint}: 스킵됨 (${result.reason})`);
+            } else {
+                const status = result.success ? '✅' : '❌';
+                console.log(`${status} ${result.endpoint}: ${result.recordCount.toLocaleString()}개 레코드`);
+                if (result.error) {
+                    console.log(`   오류: ${result.error}`);
+                }
             }
         });
 
