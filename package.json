@@ -13,7 +13,8 @@
     "collect-all": "node scripts/collect-all-endpoints.js",
     "data-status": "node scripts/data-status.js",
     "clean-data": "node scripts/collect-data.js && node scripts/data-status.js",
-    "test-performance": "node test-parallel-performance.js"
+    "test-performance": "node test-parallel-performance.js",
+    "export-mapping": "node scripts/export-summary-mapping.js"
   },
   "keywords": [
     "data-visualization",

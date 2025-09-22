@@ -963,6 +963,9 @@ class DataCollector {
 
                 console.log(`📋 발견된 엔드포인트: ${validPaths.length}개`);
 
+                let validEndpointCount = 0;
+                let skippedEndpointCount = 0;
+
                 // 각 path의 summary에서 YYYY-MM 추출
                 for (const path of validPaths) {
                     const pathInfo = paths[path];
@@ -979,15 +982,20 @@ class DataCollector {
                             const endpointKey = `pension_${yearMonth}`;
                             this.dynamicUddis[endpointKey] = pathWithoutSlash;
 
-                            console.log(`✅ ${endpointKey}: ${getSummary.substring(0, 50)}... -> ${yearMonth}`);
+                            console.log(`✅ ${endpointKey}: ${getSummary.substring(0, 50)}...`);
+                            validEndpointCount++;
                         } else {
                             console.log(`⚠️ ${path}: YYYY-MM 추출 실패 - ${getSummary.substring(0, 50)}...`);
+                            skippedEndpointCount++;
                         }
                     }
                 }
 
                 this.uddisLoaded = true;
                 console.log(`🎉 총 ${Object.keys(this.dynamicUddis).length}개 엔드포인트 로드 완료`);
+                if (skippedEndpointCount > 0) {
+                    console.log(`⏭️ ${skippedEndpointCount}개 엔드포인트 스킵됨 (무효한 데이터 형식)`);
+                }
             }
 
         } catch (error) {
@@ -999,27 +1007,98 @@ class DataCollector {
 
     async extractYearMonthFromSummary(summary) {
         try {
-            // 간단한 정규식으로 먼저 시도
-            const regexMatches = [
+            // 모든 패턴을 파싱하도록 개선
+            const allPatterns = [
+                // 기본 년월 패턴
                 /(\d{4})[년\-\/\.]\s*(\d{1,2})[월\-\/\.]?/g,
                 /(\d{4})\s*년\s*(\d{1,2})\s*월/g,
                 /(\d{4})\-(\d{2})/g,
                 /(\d{4})\.(\d{1,2})/g,
-                /(\d{4})\/(\d{1,2})/g
+                /(\d{4})\/(\d{1,2})/g,
+
+                // YYYYMMDD 형식에서 YYYY-MM 추출
+                /(\d{4})(\d{2})\d{2}$/,                       // 20210217 -> 2021-02
+
+                // MM/DD/YYYY 형식
+                /(\d{1,2})\/(\d{1,2})\/(\d{4})/,             // 09/24/2021 -> 2021-09
+
+                // _MM/DD/YYYY 형식 (언더스코어로 시작)
+                /_(\d{1,2})\/(\d{1,2})\/(\d{4})/,            // _09/24/2021 -> 2021-09
+
+                // 특수 케이스: "2020년 5월_20200520" 형식
+                /(\d{4})년\s*(\d{1,2})월.*_\d{8}/,           // 2020년 5월_20200520 -> 2020-05
+
+                // 한글이 포함된 일반적인 패턴
+                /(\d{4})년\s*(\d{1,2})월/,
+                /(\d{4})\s+(\d{1,2})월/,
+
+                // 엄격한 YYYYMM 패턴 (6자리)
+                /(\d{4})(\d{2})(?![0-9])/                     // 202005 -> 2020-05 (뒤에 숫자가 오지 않는 경우)
             ];
 
-            for (const regex of regexMatches) {
+            for (const regex of allPatterns) {
                 const match = regex.exec(summary);
                 if (match) {
-                    const year = match[1];
-                    const month = match[2].padStart(2, '0');
+                    let year, month;
+
+                    // MM/DD/YYYY 또는 _MM/DD/YYYY 형식 처리
+                    if (regex.source.includes('\\/.*\\/')) {
+                        if (regex.source.startsWith('_')) {
+                            // _MM/DD/YYYY 형식
+                            month = match[1];
+                            year = match[3];
+                        } else {
+                            // MM/DD/YYYY 형식
+                            month = match[1];
+                            year = match[3];
+                        }
+                    } else {
+                        year = match[1];
+                        month = match[2];
+                    }
+
+                    // 유효한 년도와 월인지 확인
+                    const yearNum = parseInt(year);
+                    const monthNum = parseInt(month);
+
+                    if (yearNum >= 2015 && yearNum <= 2030 && monthNum >= 1 && monthNum <= 12) {
+                        const formattedMonth = month.padStart(2, '0');
+                        console.log(`📅 ${summary} -> ${year}-${formattedMonth}`);
+                        return `${year}-${formattedMonth}`;
+                    }
+                }
+            }
+
+            // 특수 케이스 직접 처리
+            const specialCases = {
+                '국민연금공단_국민연금 가입 사업장 내역_09/24/2021': '2021-09',
+                '국민연금공단_국민연금 가입 사업장 내역_10/22/2021': '2021-10'
+            };
+
+            if (specialCases[summary]) {
+                const result = specialCases[summary];
+                console.log(`📅 ${summary} -> ${result} (특수 케이스 매칭)`);
+                return result;
+            }
+
+            // 8자리 날짜에서 YYYY-MM 추출 (마지막 시도)
+            const dateMatch = summary.match(/(\d{8})/);
+            if (dateMatch) {
+                const dateStr = dateMatch[1];
+                const year = dateStr.substring(0, 4);
+                const month = dateStr.substring(4, 6);
+
+                const yearNum = parseInt(year);
+                const monthNum = parseInt(month);
+
+                if (yearNum >= 2015 && yearNum <= 2030 && monthNum >= 1 && monthNum <= 12) {
+                    console.log(`📅 ${summary} -> ${year}-${month} (8자리 날짜에서 추출)`);
                     return `${year}-${month}`;
                 }
             }
 
-            // 정규식으로 찾지 못한 경우 LLM 사용
-            const llmResult = await this.askLLMForYearMonth(summary);
-            return llmResult;
+            console.log(`⚠️ ${summary}: YYYY-MM 추출 실패`);
+            return null;
 
         } catch (error) {
             console.warn('YYYY-MM 추출 중 오류:', error.message);
@@ -1249,6 +1328,152 @@ class DataCollector {
         } catch (error) {
             console.error('파일 정리 실패:', error.message);
             return 0;
+        }
+    }
+
+    async exportSummaryParquetMapping() {
+        console.log('📊 OpenAPI summary와 parquet 파일 매핑을 CSV로 저장합니다...');
+
+        try {
+            // temp 디렉토리 확인 및 생성
+            const tempDir = path.join(__dirname, '../../temp');
+            try {
+                await fs.access(tempDir);
+            } catch {
+                await fs.mkdir(tempDir, { recursive: true });
+                console.log(`📁 temp 디렉토리 생성: ${tempDir}`);
+            }
+
+            // OpenAPI 문서에서 엔드포인트 정보 가져오기
+            const response = await this.retryApiCall(
+                () => axios.get('https://infuser.odcloud.kr/oas/docs?namespace=15083277/v1', {
+                    timeout: this.timeoutMs,
+                    headers: {
+                        'Accept': 'application/json',
+                        'User-Agent': 'DataCollector/1.0'
+                    }
+                }),
+                'OpenAPI 문서 조회 (exportSummaryParquetMapping)'
+            );
+
+            if (!response.data || !response.data.paths) {
+                throw new Error('OpenAPI 문서에서 paths 정보를 찾을 수 없습니다.');
+            }
+
+            // 기존 parquet 파일 목록 가져오기
+            const sourceFiles = await fs.readdir(this.sourceDir);
+            const parquetFiles = sourceFiles.filter(file => file.endsWith('.parquet'));
+
+            console.log(`📋 발견된 parquet 파일: ${parquetFiles.length}개`);
+
+            const paths = response.data.paths;
+            const validPaths = Object.keys(paths).filter(path =>
+                path.startsWith('/15083277/v1/uddi')
+            );
+
+            console.log(`📋 발견된 API 엔드포인트: ${validPaths.length}개`);
+
+            const mappingData = [];
+
+            // 각 path의 summary 분석
+            for (const path of validPaths) {
+                const pathInfo = paths[path];
+                const getSummary = pathInfo.get?.summary || pathInfo.get?.description || '';
+
+                if (getSummary) {
+                    // YYYY-MM 추출 시도
+                    const yearMonth = await this.extractYearMonthFromSummary(getSummary);
+
+                    // 해당하는 parquet 파일 찾기
+                    let matchingParquetFiles = [];
+                    if (yearMonth) {
+                        // pension_YYYY-MM_YYYY-MM.parquet 패턴으로 찾기
+                        matchingParquetFiles = parquetFiles.filter(file =>
+                            file.includes(`pension_${yearMonth}_`) ||
+                            file.includes(`pension_workplace_${yearMonth}`)
+                        );
+                    }
+
+                    mappingData.push({
+                        endpoint_path: path,
+                        summary: getSummary,
+                        extracted_year_month: yearMonth || '',
+                        matching_parquet_files: matchingParquetFiles.join('; '),
+                        parquet_file_count: matchingParquetFiles.length,
+                        status: yearMonth ? 'valid' : 'parse_failed'
+                    });
+                } else {
+                    mappingData.push({
+                        endpoint_path: path,
+                        summary: '',
+                        extracted_year_month: '',
+                        matching_parquet_files: '',
+                        parquet_file_count: 0,
+                        status: 'no_summary'
+                    });
+                }
+            }
+
+            // CSV 헤더
+            const csvHeaders = [
+                'endpoint_path',
+                'summary',
+                'extracted_year_month',
+                'matching_parquet_files',
+                'parquet_file_count',
+                'status'
+            ];
+
+            // CSV 데이터 생성
+            const csvRows = [csvHeaders.join(',')];
+
+            for (const item of mappingData) {
+                const row = [
+                    `"${item.endpoint_path}"`,
+                    `"${item.summary.replace(/"/g, '""')}"`, // CSV escape
+                    `"${item.extracted_year_month}"`,
+                    `"${item.matching_parquet_files}"`,
+                    item.parquet_file_count,
+                    `"${item.status}"`
+                ];
+                csvRows.push(row.join(','));
+            }
+
+            // CSV 파일 저장
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const csvFilePath = path.join(tempDir, `summary_parquet_mapping_${timestamp}.csv`);
+            const csvContent = csvRows.join('\n');
+
+            await fs.writeFile(csvFilePath, csvContent, 'utf8');
+
+            // 통계 출력
+            const validCount = mappingData.filter(item => item.status === 'valid').length;
+            const parseFailedCount = mappingData.filter(item => item.status === 'parse_failed').length;
+            const noSummaryCount = mappingData.filter(item => item.status === 'no_summary').length;
+            const withParquetCount = mappingData.filter(item => item.parquet_file_count > 0).length;
+
+            console.log('\n📊 매핑 결과 통계:');
+            console.log(`✅ 유효한 엔드포인트: ${validCount}개`);
+            console.log(`❌ 파싱 실패: ${parseFailedCount}개`);
+            console.log(`❓ summary 없음: ${noSummaryCount}개`);
+            console.log(`📄 parquet 파일 매칭: ${withParquetCount}개`);
+            console.log(`💾 CSV 파일 저장: ${csvFilePath}`);
+
+            return {
+                success: true,
+                csvFilePath: csvFilePath,
+                totalEndpoints: mappingData.length,
+                validEndpoints: validCount,
+                parseFailedCount: parseFailedCount,
+                withParquetFiles: withParquetCount
+            };
+
+        } catch (error) {
+            console.error('❌ CSV 매핑 파일 생성 실패:', error.message);
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 }
