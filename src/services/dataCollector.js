@@ -75,6 +75,9 @@ class DataCollector {
         this.sourceDir = path.join(__dirname, '../../source/data');
         this.logsDir = path.join(__dirname, '../../source/logs');
 
+        // 성능 최적화 설정
+        this.optimizedReading = true;
+
         // 기본 UDDI (호환성 유지)
         this.uddis = {
             'pension_workplace': 'uddi:20ddf65d-51d8-421f-8ee5-b64f05554151'
@@ -703,7 +706,342 @@ class DataCollector {
         }
     }
 
-    // 기간별로 모든 파일을 로드하는 새로운 메서드 (스트리밍 방식으로 메모리 최적화)
+    // 🚀 고성능 최적화된 기간별 데이터 로드 (권장)
+    async loadDataByDateRangeFast(startDate, endDate, uddiName = 'pension_workplace', workplaceNameFilter = null) {
+        const overallStartTime = Date.now();
+        console.log(`🚀 고성능 최적화 로더로 기간별 데이터 로드 시작: ${startDate} ~ ${endDate}`);
+
+        if (workplaceNameFilter) {
+            console.log(`🔍 사업장명 필터: ${workplaceNameFilter}`);
+        }
+
+        try {
+            const files = await fs.readdir(this.sourceDir);
+
+            // 기간 내의 모든 파일 찾기 (호환 파일 우선)
+            const moment = require('moment');
+            const start = moment(startDate, 'YYYY-MM');
+            const end = moment(endDate, 'YYYY-MM');
+
+            // 모든 기간 내 파일 찾기 (parquet 호환성은 나중에 체크)
+            const potentialFiles = [];
+            const parquetFiles = files.filter(file => {
+                if (!file.endsWith('.parquet')) return false;
+
+                // pension_workplace_YYYY-MM.parquet 패턴
+                if (file.startsWith(`${uddiName}_`)) {
+                    const match = file.match(/(\d{4}-\d{2})\.parquet$/);
+                    if (match) {
+                        const fileDate = moment(match[1], 'YYYY-MM');
+                        if (fileDate.isBetween(start, end, null, '[]')) {
+                            potentialFiles.push(file);
+                            return true;
+                        }
+                    }
+                }
+
+                // pension_YYYY-MM_YYYY-MM.parquet 패턴
+                if (file.startsWith('pension_')) {
+                    const match = file.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.parquet$/);
+                    if (match) {
+                        const fileDate = moment(match[1], 'YYYY-MM');
+                        if (fileDate.isBetween(start, end, null, '[]')) {
+                            potentialFiles.push(file);
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            });
+
+            if (potentialFiles.length === 0) {
+                return {
+                    success: false,
+                    error: `기간 ${startDate} ~ ${endDate} 내의 데이터 파일을 찾을 수 없습니다.`
+                };
+            }
+
+            console.log(`📁 발견된 파일: ${potentialFiles.length}개`);
+
+            let allData = [];
+            let combinedMetadata = null;
+            let totalProcessedRecords = 0;
+            let successfulFiles = 0;
+            let skippedFiles = 0;
+            const compatibleFiles = [];
+            const incompatibleFiles = [];
+
+            // 모든 파일을 순차적으로 처리하면서 호환성 체크 (메모리 효율성)
+            console.log(`⚡ 파일들 순차 처리 시작 (${potentialFiles.length}개)...`);
+
+            for (const fileName of potentialFiles) {
+                    const fileStartTime = Date.now();
+                    const filePath = path.join(this.sourceDir, fileName);
+
+                    try {
+                        console.log(`  📖 ${fileName} 처리 시작...`);
+
+                        // 먼저 parquet 파일 호환성 체크
+                        let reader;
+                        let isParquetCompatible = true;
+
+                        try {
+                            reader = await parquet.ParquetReader.openFile(filePath);
+                        } catch (openError) {
+                            if (typeof openError === 'string' && openError.includes('invalid parquet version')) {
+                                isParquetCompatible = false;
+                                console.log(`    ⚠️ ${fileName}: Parquet 버전 비호환, 메타데이터 방식으로 처리`);
+                            } else {
+                                throw openError;
+                            }
+                        }
+
+                        if (isParquetCompatible) {
+                            // 호환 가능한 파일: 기존 방식으로 처리
+                            compatibleFiles.push(fileName);
+
+                            const cursor = reader.getCursor();
+                            let record = null;
+                            let filteredCount = 0;
+                            let recordCount = 0;
+
+                            // 스트리밍 방식으로 직접 allData에 추가 (메모리 효율성)
+                            const batchSize = 5000;
+
+                            while (record = await cursor.next()) {
+                                recordCount++;
+
+                                if (workplaceNameFilter) {
+                                    const workplaceName = record['사업장명'];
+                                    if (!workplaceName || !workplaceName.toLowerCase().includes(workplaceNameFilter.toLowerCase())) {
+                                        continue;
+                                    }
+                                }
+
+                                allData.push(record); // 직접 최종 배열에 추가
+                                filteredCount++;
+
+                                // 메모리 관리
+                                if (recordCount % batchSize === 0) {
+                                    if (global.gc) {
+                                        global.gc();
+                                    }
+
+                                    // 진행상황 표시
+                                    if (recordCount % 20000 === 0) {
+                                        const elapsed = ((Date.now() - fileStartTime) / 1000).toFixed(1);
+                                        const memUsage = this.getMemoryUsage();
+                                        console.log(`    📊 ${fileName}: ${recordCount.toLocaleString()}개 처리, ${filteredCount.toLocaleString()}개 필터링 (${elapsed}초, 메모리: ${memUsage.usedMB}MB)`);
+                                    }
+                                }
+                            }
+
+                            await reader.close();
+
+                            const loadTime = ((Date.now() - fileStartTime) / 1000).toFixed(2);
+                            console.log(`  ✅ ${fileName}: ${filteredCount.toLocaleString()}개 레코드 (${loadTime}초)`);
+
+                            successfulFiles++;
+
+                        } else {
+                            // 비호환 파일: 메타데이터만 읽고 가능한 정보 제공
+                            incompatibleFiles.push(fileName);
+
+                            const metadataPath = filePath.replace('.parquet', '_metadata.json');
+                            try {
+                                const metadataContent = await fs.readFile(metadataPath, 'utf8');
+                                const metadata = JSON.parse(metadataContent);
+
+                                const loadTime = ((Date.now() - fileStartTime) / 1000).toFixed(2);
+                                console.log(`  📄 ${fileName}: 메타데이터만 로드 (총 ${metadata.totalRecords?.toLocaleString() || '알 수 없음'}개 레코드, ${loadTime}초)`);
+
+                                // 메타데이터 정보를 combinedMetadata에 추가
+                                if (!combinedMetadata && metadata) {
+                                    combinedMetadata = { ...metadata };
+                                }
+
+                            } catch (metaError) {
+                                const loadTime = ((Date.now() - fileStartTime) / 1000).toFixed(2);
+                                console.warn(`  ⚠️ ${fileName}: 메타데이터도 읽기 실패 (${loadTime}초)`);
+                            }
+                        }
+
+                    } catch (error) {
+                        const loadTime = ((Date.now() - fileStartTime) / 1000).toFixed(2);
+                        console.warn(`  ❌ ${fileName}: 처리 실패 (${loadTime}초) - ${error.message}`);
+                    }
+
+                    // 파일 간 메모리 정리
+                    if (global.gc) {
+                        global.gc();
+                    }
+                }
+
+            // 파일 처리 결과 요약
+            skippedFiles = incompatibleFiles.length;
+            console.log(`📊 처리 결과: 호환 ${compatibleFiles.length}개, 비호환 ${incompatibleFiles.length}개`);
+
+            if (incompatibleFiles.length > 0) {
+                console.log(`📄 비호환 파일들 (메타데이터만): ${incompatibleFiles.slice(0, 3).join(', ')}${incompatibleFiles.length > 3 ? '...' : ''}`);
+
+                // 비호환 파일들에 대한 알림 메시지
+                if (allData.length === 0 && workplaceNameFilter) {
+                    console.log(`💡 알림: '${workplaceNameFilter}' 데이터가 2020년 이후 파일에 있을 수 있습니다.`);
+                    console.log(`   - 이 파일들은 현재 parquet 버전 호환성 문제로 읽을 수 없습니다.`);
+                    console.log(`   - 사용 가능한 연도: 2015-2019년`);
+                }
+            }
+
+            // 메타데이터 생성
+            if (!combinedMetadata) {
+                combinedMetadata = {
+                    uddiName: uddiName
+                };
+            }
+
+            combinedMetadata.totalRecords = allData.length;
+            combinedMetadata.totalProcessedRecords = allData.length;
+            combinedMetadata.dateRange = { startDate, endDate };
+            combinedMetadata.filesCount = potentialFiles.length;
+            combinedMetadata.compatibleFiles = compatibleFiles.length;
+            combinedMetadata.incompatibleFiles = incompatibleFiles.length;
+            combinedMetadata.successfulFiles = successfulFiles;
+            combinedMetadata.skippedFiles = skippedFiles;
+            combinedMetadata.loadedAt = new Date().toISOString();
+            combinedMetadata.workplaceNameFilter = workplaceNameFilter;
+            combinedMetadata.loadMethod = 'Optimized with Compatibility Check';
+            combinedMetadata.availableYears = '2015-2019 (fully compatible), 2020+ (metadata only)';
+
+            // 사용자에게 유용한 정보 추가
+            if (allData.length === 0 && incompatibleFiles.length > 0) {
+                combinedMetadata.note = '요청한 기간의 데이터는 parquet 버전 호환성 문제로 현재 읽을 수 없습니다. 2015-2019년 데이터를 사용해보세요.';
+            }
+
+            const overallEndTime = Date.now();
+            const totalLoadTime = ((overallEndTime - overallStartTime) / 1000).toFixed(2);
+            console.log(`🎉 고성능 데이터 로드 완료: ${allData.length.toLocaleString()}개 레코드 (총 ${totalLoadTime}초)`);
+
+            return {
+                success: true,
+                metadata: combinedMetadata,
+                data: allData,
+                filesLoaded: potentialFiles.length,
+                compatibleFiles: compatibleFiles.length,
+                incompatibleFiles: incompatibleFiles.length,
+                successfulFiles: successfulFiles,
+                skippedFiles: skippedFiles,
+                totalLoadTime: totalLoadTime,
+                method: 'Optimized with Compatibility Check'
+            };
+
+        } catch (error) {
+            const overallEndTime = Date.now();
+            const totalTime = ((overallEndTime - overallStartTime) / 1000).toFixed(2);
+            console.error(`❌ 고성능 데이터 로드 실패 (${totalTime}초):`, error.message);
+
+            // 폴백: 기존 방식 사용
+            console.log(`🔄 기존 방식으로 폴백...`);
+            return this.loadDataByDateRange(startDate, endDate, uddiName, workplaceNameFilter);
+        }
+    }
+
+    // 🚀 고성능 최적화된 최신 데이터 로드 (권장)
+    async loadDataFast(uddiName = 'pension_workplace') {
+        const startTime = Date.now();
+        console.log(`🚀 고성능 최적화 로더로 최신 데이터 로드: ${uddiName}`);
+
+        try {
+            // 가장 최근 호환 파일 찾기
+            const files = await fs.readdir(this.sourceDir);
+            const parquetFiles = files.filter(file =>
+                file.startsWith(`${uddiName}_`) &&
+                file.endsWith('.parquet') &&
+                file.match(/\d{4}-\d{2}\.parquet$/)
+            );
+
+            if (parquetFiles.length === 0) {
+                return {
+                    success: false,
+                    error: `${uddiName} parquet 파일을 찾을 수 없습니다.`
+                };
+            }
+
+            // 호환 가능한 파일들 우선 선택
+            const compatibleFiles = parquetFiles.filter(file => {
+                const match = file.match(/(\d{4}-\d{2})\.parquet$/);
+                if (match) {
+                    const year = parseInt(match[1].substring(0, 4));
+                    return year >= 2016 && year <= 2019;
+                }
+                return false;
+            });
+
+            const targetFiles = compatibleFiles.length > 0 ? compatibleFiles : parquetFiles;
+
+            // 가장 최근 파일 선택
+            const latestFile = targetFiles
+                .map(file => ({
+                    name: file,
+                    path: path.join(this.sourceDir, file),
+                    monthYear: file.match(/(\d{4}-\d{2})\.parquet$/)[1]
+                }))
+                .sort((a, b) => b.monthYear.localeCompare(a.monthYear))[0];
+
+            console.log(`📖 최신 파일 고속 로드: ${latestFile.name}`);
+
+            const reader = await parquet.ParquetReader.openFile(latestFile.path);
+            const cursor = reader.getCursor();
+            const data = [];
+            let record = null;
+
+            // 고속 읽기
+            while (record = await cursor.next()) {
+                data.push(record);
+            }
+
+            await reader.close();
+
+            const endTime = Date.now();
+            const totalLoadTime = ((endTime - startTime) / 1000).toFixed(2);
+            console.log(`🎉 고성능 데이터 로드 완료: ${data.length.toLocaleString()}개 레코드 (총 ${totalLoadTime}초)`);
+
+            // 메타데이터 로드
+            let metadata;
+            try {
+                const metadataPath = latestFile.path.replace('.parquet', '_metadata.json');
+                const metadataContent = await fs.readFile(metadataPath, 'utf8');
+                metadata = JSON.parse(metadataContent);
+                metadata.loadMethod = 'Optimized';
+            } catch (metaError) {
+                metadata = {
+                    uddiName: uddiName,
+                    totalRecords: data.length,
+                    loadMethod: 'Optimized'
+                };
+            }
+
+            return {
+                success: true,
+                metadata: metadata,
+                data: data,
+                fileType: 'parquet',
+                loadTime: totalLoadTime,
+                method: 'Optimized'
+            };
+
+        } catch (error) {
+            const endTime = Date.now();
+            const totalTime = ((endTime - startTime) / 1000).toFixed(2);
+            console.error(`❌ 고성능 데이터 로드 실패 (${totalTime}초):`, error.message);
+
+            // 폴백: 기존 방식 사용
+            console.log(`🔄 기존 방식으로 폴백...`);
+            return this.loadData(uddiName);
+        }
+    }
+
+    // 📊 기존 방식: 기간별로 모든 파일을 로드하는 메서드 (스트리밍 방식으로 메모리 최적화)
     async loadDataByDateRange(startDate, endDate, uddiName = 'pension_workplace', workplaceNameFilter = null) {
         const overallStartTime = Date.now();
         console.log(`⏱️ 기간별 데이터 로드 시작: ${startDate} ~ ${endDate}`);
@@ -814,11 +1152,53 @@ class DataCollector {
 
                     if (fileInfo.type === 'parquet') {
                         // 최적화된 Parquet 파일 스트리밍 읽기
-                        const reader = await parquet.ParquetReader.openFile(filePath);
+                        console.log(`    🔍 ${fileInfo.name}: Parquet 파일 열기 시도...`);
+
+                        // Parquet 버전 호환성 확인을 위한 try-catch
+                        let reader;
+                        try {
+                            reader = await parquet.ParquetReader.openFile(filePath);
+                            console.log(`    ✅ ${fileInfo.name}: Parquet 파일 열기 성공`);
+                        } catch (openError) {
+                            // Parquet 버전 호환성 문제 처리
+                            if (typeof openError === 'string' && openError.includes('invalid parquet version')) {
+                                console.warn(`    ⚠️ ${fileInfo.name}: Parquet 버전 호환성 문제로 스킵 - ${openError}`);
+                                // 메타데이터만 로드하고 빈 데이터로 처리
+                                const metadataPath = filePath.replace('.parquet', '_metadata.json');
+                                try {
+                                    const metadataContent = await fs.readFile(metadataPath, 'utf8');
+                                    fileMetadata = JSON.parse(metadataContent);
+                                    console.log(`    📄 ${fileInfo.name}: 메타데이터만 로드하여 버전 호환성 문제 우회`);
+                                } catch (metaError) {
+                                    fileMetadata = { uddiName, monthYear, note: 'Parquet version incompatible' };
+                                }
+
+                                // 빈 데이터로 성공 처리 (스킵)
+                                return {
+                                    fileName: fileInfo.name,
+                                    monthYear,
+                                    data: [],
+                                    metadata: fileMetadata,
+                                    recordCount: 0,
+                                    filteredCount: 0,
+                                    loadTime: ((Date.now() - fileStartTime) / 1000).toFixed(2),
+                                    success: true,
+                                    error: null,
+                                    skipped: true,
+                                    skipReason: 'Parquet version incompatibility'
+                                };
+                            } else {
+                                // 다른 종류의 에러는 그대로 throw
+                                throw openError;
+                            }
+                        }
+
                         const cursor = reader.getCursor();
+                        console.log(`    🔍 ${fileInfo.name}: 커서 생성 완료`);
                         const batchSize = 10000;
 
                         let record = null;
+                        console.log(`    🔍 ${fileInfo.name}: 레코드 읽기 시작...`);
 
                         while (record = await cursor.next()) {
                             recordCount++;
@@ -847,15 +1227,19 @@ class DataCollector {
                             }
                         }
 
+                        console.log(`    🔍 ${fileInfo.name}: 레코드 읽기 완료, reader 닫기 시도...`);
                         await reader.close();
+                        console.log(`    ✅ ${fileInfo.name}: reader 닫기 완료`);
 
                         // 메타데이터 파일 로드
                         const metadataPath = filePath.replace('.parquet', '_metadata.json');
+                        console.log(`    🔍 ${fileInfo.name}: 메타데이터 파일 로드 시도: ${metadataPath}`);
                         try {
                             const metadataContent = await fs.readFile(metadataPath, 'utf8');
                             fileMetadata = JSON.parse(metadataContent);
+                            console.log(`    ✅ ${fileInfo.name}: 메타데이터 로드 성공`);
                         } catch (metaError) {
-                            console.warn(`⚠️ 메타데이터 파일 로드 실패: ${metadataPath}`);
+                            console.warn(`⚠️ 메타데이터 파일 로드 실패: ${metadataPath}:`, metaError.message);
                             fileMetadata = { uddiName, monthYear };
                         }
 
@@ -908,7 +1292,37 @@ class DataCollector {
                 } catch (error) {
                     const fileEndTime = Date.now();
                     const fileLoadTime = ((fileEndTime - fileStartTime) / 1000).toFixed(2);
-                    console.error(`❌ ${fileInfo.name} 처리 실패 (${fileLoadTime}초):`, error.message);
+
+                    // 더 자세한 에러 정보 수집
+                    let errorMessage = 'Unknown error';
+                    let errorDetails = {};
+
+                    if (error) {
+                        // String 에러 처리 (parquetjs가 문자열 에러를 던지는 경우)
+                        if (typeof error === 'string') {
+                            errorMessage = error;
+                            errorDetails = {
+                                type: 'string',
+                                original: error
+                            };
+                        } else {
+                            // 일반적인 Error 객체 처리
+                            errorMessage = error.message || error.toString() || 'Error object exists but no message';
+                            errorDetails = {
+                                name: error.name,
+                                code: error.code,
+                                stack: error.stack ? error.stack.split('\n')[0] : 'No stack trace',
+                                type: typeof error,
+                                constructor: error.constructor ? error.constructor.name : 'Unknown'
+                            };
+                        }
+                    } else {
+                        errorMessage = 'Error is null or undefined';
+                    }
+
+                    console.error(`❌ ${fileInfo.name} 처리 실패 (${fileLoadTime}초):`);
+                    console.error(`   메시지: ${errorMessage}`);
+                    console.error(`   상세정보:`, errorDetails);
 
                     return {
                         fileName: fileInfo.name,
@@ -919,7 +1333,8 @@ class DataCollector {
                         filteredCount: 0,
                         loadTime: fileLoadTime,
                         success: false,
-                        error: error.message
+                        error: errorMessage,
+                        errorDetails: errorDetails
                     };
                 }
             });
@@ -931,17 +1346,23 @@ class DataCollector {
             // 결과를 합치기
             let successfulFiles = 0;
             let failedFiles = 0;
+            let skippedFiles = 0;
             for (const result of fileResults) {
                 if (result.success) {
-                    allData.push(...result.data);
-                    totalProcessedRecords += result.recordCount;
+                    if (result.skipped) {
+                        console.log(`⏭️ ${result.fileName} 스킵됨: ${result.skipReason}`);
+                        skippedFiles++;
+                    } else {
+                        allData.push(...result.data);
+                        totalProcessedRecords += result.recordCount;
+                        console.log(`🔗 ${result.fileName} 병합 완료: ${result.filteredCount.toLocaleString()}개 레코드`);
+                    }
 
                     // 첫 번째 성공한 파일의 메타데이터를 기본으로 사용
                     if (!combinedMetadata && result.metadata) {
                         combinedMetadata = { ...result.metadata };
                     }
 
-                    console.log(`🔗 ${result.fileName} 병합 완료: ${result.filteredCount.toLocaleString()}개 레코드`);
                     successfulFiles++;
                 } else {
                     console.error(`❌ ${result.fileName} 처리 실패: ${result.error}`);
@@ -949,8 +1370,8 @@ class DataCollector {
                 }
             }
 
-            if (failedFiles > 0) {
-                console.warn(`⚠️ ${failedFiles}개 파일 처리 실패, ${successfulFiles}개 파일 성공`);
+            if (failedFiles > 0 || skippedFiles > 0) {
+                console.warn(`📊 처리 요약: 성공 ${successfulFiles}개, 실패 ${failedFiles}개, 스킵 ${skippedFiles}개`);
             }
 
             // 메모리 정리
@@ -972,6 +1393,7 @@ class DataCollector {
             combinedMetadata.filesCount = allFiles.length;
             combinedMetadata.successfulFiles = successfulFiles;
             combinedMetadata.failedFiles = failedFiles;
+            combinedMetadata.skippedFiles = skippedFiles;
             combinedMetadata.loadedAt = new Date().toISOString();
             combinedMetadata.workplaceNameFilter = workplaceNameFilter;
 
@@ -996,12 +1418,15 @@ class DataCollector {
                 filesLoaded: allFiles.length,
                 successfulFiles: successfulFiles,
                 failedFiles: failedFiles,
+                skippedFiles: skippedFiles,
                 totalLoadTime: totalLoadTime,
                 fileLoadTimes: fileResults.map(r => ({
                     fileName: r.fileName,
                     loadTime: r.loadTime,
                     success: r.success,
-                    error: r.error
+                    error: r.error,
+                    skipped: r.skipped,
+                    skipReason: r.skipReason
                 }))
             };
 

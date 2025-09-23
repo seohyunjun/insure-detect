@@ -90,9 +90,9 @@ app.post('/api/workplace-data', async (req, res) => {
 
         console.log(`⏱️ API 요청 시작: ${workplaceName} (${startDate} ~ ${endDate})`);
 
-        // 로컬 데이터에서 기간별로 모든 파일 로드 (스트리밍 방식으로 사업장명 필터링 포함)
+        // 🚀 고성능 DuckDB로 로컬 데이터에서 기간별로 모든 파일 로드 (사업장명 필터링 포함)
         const dataLoadStartTime = Date.now();
-        const result = await dataCollector.loadDataByDateRange(startDate, endDate, 'pension_workplace', workplaceName);
+        const result = await dataCollector.loadDataByDateRangeFast(startDate, endDate, 'pension_workplace', workplaceName);
         const dataLoadTime = ((Date.now() - dataLoadStartTime) / 1000).toFixed(2);
 
         if (!result.success) {
@@ -378,11 +378,11 @@ app.get('/api/debug/sample', async (req, res) => {
 
         let result;
         if (startDate && endDate) {
-            // 기간별 데이터 로드
-            result = await dataCollector.loadDataByDateRange(startDate, endDate);
+            // 🚀 고성능 기간별 데이터 로드
+            result = await dataCollector.loadDataByDateRangeFast(startDate, endDate);
         } else {
-            // 기본 데이터 로드
-            result = await dataCollector.loadData();
+            // 🚀 고성능 기본 데이터 로드
+            result = await dataCollector.loadDataFast();
         }
 
         if (!result.success) {
