@@ -26,6 +26,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@apache-arrow/es2015-esm": "^21.0.0",
     "axios": "^1.6.0",
     "cors": "^2.8.5",
     "csv-parser": "^3.0.0",

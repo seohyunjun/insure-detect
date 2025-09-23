@@ -34,7 +34,11 @@ class DataProcessor {
     }
 
     processWorkplaceTimeSeries(rawData) {
+        const startTime = Date.now();
+        console.log(`  📊 시계열 데이터 처리 시작: ${rawData ? rawData.length : 0}개 레코드`);
+
         if (!Array.isArray(rawData) || rawData.length === 0) {
+            console.log(`  ⚠️ 시계열 데이터 처리 건너뜀: 빈 데이터`);
             return {
                 labels: [],
                 datasets: []
@@ -42,7 +46,10 @@ class DataProcessor {
         }
 
         // 자료생성년월별로 데이터 그룹화 및 정렬
+        const groupStartTime = Date.now();
         const groupedData = this.groupByMonth(rawData);
+        const groupTime = ((Date.now() - groupStartTime) / 1000).toFixed(3);
+        console.log(`    ⚙️ 데이터 그룹화 완료 (${groupTime}초)`);
         const sortedMonths = Object.keys(groupedData).sort();
 
         // 레이블 생성 (YYYY-MM 형식)
@@ -70,6 +77,10 @@ class DataProcessor {
             resignations.push(totals.loss);
             totalMembers.push(totals.total);
         });
+
+        const endTime = Date.now();
+        const totalTime = ((endTime - startTime) / 1000).toFixed(3);
+        console.log(`  ✅ 시계열 데이터 처리 완료 (${totalTime}초)`);
 
         return {
             labels,
@@ -101,7 +112,11 @@ class DataProcessor {
     }
 
     processWorkplaceSummary(rawData) {
+        const startTime = Date.now();
+        console.log(`  📊 요약 데이터 처리 시작: ${rawData ? rawData.length : 0}개 레코드`);
+
         if (!Array.isArray(rawData) || rawData.length === 0) {
+            console.log(`  ⚠️ 요약 데이터 처리 건너뜀: 빈 데이터`);
             return {
                 totalNewHires: 0,
                 totalResignations: 0,
@@ -149,6 +164,10 @@ class DataProcessor {
         const averageMonthlyChange = monthlyChanges.length > 0
             ? monthlyChanges.reduce((a, b) => a + b, 0) / monthlyChanges.length
             : 0;
+
+        const endTime = Date.now();
+        const totalTime = ((endTime - startTime) / 1000).toFixed(3);
+        console.log(`  ✅ 요약 데이터 처리 완료 (${totalTime}초)`);
 
         return {
             totalNewHires,
@@ -235,7 +254,11 @@ class DataProcessor {
     }
 
     generateStatistics(data) {
+        const startTime = Date.now();
+        console.log(`  📊 통계 데이터 처리 시작: ${data ? data.length : 0}개 레코드`);
+
         if (!Array.isArray(data) || data.length === 0) {
+            console.log(`  ⚠️ 통계 데이터 처리 건너뜀: 빈 데이터`);
             return {
                 dataPoints: 0,
                 dateRange: { start: null, end: null },
@@ -246,6 +269,10 @@ class DataProcessor {
         const months = data.map(item => item['자료생성년월']).filter(Boolean);
         const sortedMonths = months.sort();
         const workplaces = this.getWorkplaceList(data);
+
+        const endTime = Date.now();
+        const totalTime = ((endTime - startTime) / 1000).toFixed(3);
+        console.log(`  ✅ 통계 데이터 처리 완료 (${totalTime}초)`);
 
         return {
             dataPoints: data.length,

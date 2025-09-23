@@ -461,18 +461,26 @@ class DataCollector {
     }
 
     async writeDataToParquet(filePath, data, schema) {
-        try {
-            console.log(`💾 Parquet 파일로 저장 중: ${filePath}`);
+        const startTime = Date.now();
+        console.log(`💾 Parquet 파일로 저장 시작: ${filePath} (${data.length.toLocaleString()}개 레코드)`);
 
+        try {
             // Parquet 스키마 생성
+            const schemaStartTime = Date.now();
             const parquetSchema = new parquet.ParquetSchema(schema);
+            const schemaTime = ((Date.now() - schemaStartTime) / 1000).toFixed(2);
+            console.log(`  📝 스키마 생성 완료 (${schemaTime}초)`);
 
             // Parquet writer 생성
+            const writerStartTime = Date.now();
             const writer = await parquet.ParquetWriter.openFile(parquetSchema, filePath);
+            const writerTime = ((Date.now() - writerStartTime) / 1000).toFixed(2);
+            console.log(`  📝 Writer 생성 완료 (${writerTime}초)`);
 
             // 데이터를 청크 단위로 저장
             const chunkSize = 1000;
             const totalItems = data.length;
+            const writeStartTime = Date.now();
 
             for (let i = 0; i < totalItems; i += chunkSize) {
                 const chunk = data.slice(i, i + chunkSize);
@@ -481,7 +489,9 @@ class DataCollector {
                     await writer.appendRow(item);
                 }
 
-                console.log(`  📝 진행률: ${Math.min(i + chunkSize, totalItems)}/${totalItems}`);
+                const elapsed = ((Date.now() - writeStartTime) / 1000).toFixed(1);
+                const progress = ((Math.min(i + chunkSize, totalItems) / totalItems) * 100).toFixed(1);
+                console.log(`  📝 진행률: ${Math.min(i + chunkSize, totalItems)}/${totalItems} (${progress}%, ${elapsed}초 경과)`);
 
                 // 메모리 정리
                 if (global.gc) {
@@ -489,11 +499,21 @@ class DataCollector {
                 }
             }
 
+            const closeStartTime = Date.now();
             await writer.close();
-            console.log(`✅ Parquet 파일 저장 완료: ${totalItems}개 레코드`);
+            const closeTime = ((Date.now() - closeStartTime) / 1000).toFixed(2);
+
+            const endTime = Date.now();
+            const totalTime = ((endTime - startTime) / 1000).toFixed(2);
+            const writeTime = ((Date.now() - writeStartTime) / 1000).toFixed(2);
+
+            console.log(`  📝 Writer 닫기 완룼 (${closeTime}초)`);
+            console.log(`✅ Parquet 파일 저장 완료: ${totalItems.toLocaleString()}개 레코드 (총 ${totalTime}초, 쓰기: ${writeTime}초)`);
 
         } catch (error) {
-            console.error('Parquet 파일 저장 실패:', error.message);
+            const endTime = Date.now();
+            const totalTime = ((endTime - startTime) / 1000).toFixed(2);
+            console.error(`❌ Parquet 파일 저장 실패 (${totalTime}초):`, error.message);
             throw error;
         }
     }
@@ -560,6 +580,9 @@ class DataCollector {
     }
 
     async loadData(uddiName = 'pension_workplace') {
+        const startTime = Date.now();
+        console.log(`⏱️ 데이터 로드 시작: ${uddiName}`);
+
         try {
             // YYYY-MM 패턴으로 가장 최근 파일 찾기 (parquet 파일 우선)
             const files = await fs.readdir(this.sourceDir);
@@ -609,17 +632,39 @@ class DataCollector {
             let data, metadata;
 
             if (latestFile.type === 'parquet') {
-                // Parquet 파일 로드
+                // 최적화된 Parquet 파일 로드
+                const fileStartTime = Date.now();
                 const reader = await parquet.ParquetReader.openFile(latestFile.path);
                 const cursor = reader.getCursor();
                 const records = [];
 
                 let record = null;
+                let count = 0;
+                const batchSize = 5000; // 배치 크기로 메모리 관리
+
+                console.log(`📖 Parquet 파일 로드 중: ${latestFile.name}`);
+
                 while (record = await cursor.next()) {
                     records.push(record);
+                    count++;
+
+                    // 주기적으로 진행상황 표시
+                    if (count % batchSize === 0) {
+                        const memUsage = this.getMemoryUsage();
+                        const elapsed = ((Date.now() - fileStartTime) / 1000).toFixed(1);
+                        console.log(`  📊 ${count.toLocaleString()}개 레코드 로드됨 (${elapsed}초 경과, 메모리: ${memUsage.usedMB}MB)`);
+
+                        // 가비지 컬렉션 실행
+                        if (global.gc) {
+                            global.gc();
+                        }
+                    }
                 }
 
                 await reader.close();
+                const fileEndTime = Date.now();
+                const fileLoadTime = ((fileEndTime - fileStartTime) / 1000).toFixed(2);
+                console.log(`✅ Parquet 로드 완료: ${count.toLocaleString()}개 레코드 (${fileLoadTime}초)`);
 
                 // 메타데이터 파일 로드
                 const metadataPath = latestFile.path.replace('.parquet', '_metadata.json');
@@ -635,28 +680,38 @@ class DataCollector {
                 data = jsonData.data;
             }
 
+            const endTime = Date.now();
+            const totalLoadTime = ((endTime - startTime) / 1000).toFixed(2);
+            console.log(`🎉 데이터 로드 완료: ${data.length.toLocaleString()}개 레코드 (총 ${totalLoadTime}초)`);
+
             return {
                 success: true,
                 metadata: metadata,
                 data: data,
-                fileType: latestFile.type
+                fileType: latestFile.type,
+                loadTime: totalLoadTime
             };
         } catch (error) {
-            console.error('데이터 로드 실패:', error.message);
+            const endTime = Date.now();
+            const totalTime = ((endTime - startTime) / 1000).toFixed(2);
+            console.error(`❌ 데이터 로드 실패 (${totalTime}초):`, error.message);
             return {
                 success: false,
-                error: '데이터 로드 중 오류가 발생했습니다.'
+                error: '데이터 로드 중 오류가 발생했습니다.',
+                loadTime: totalTime
             };
         }
     }
 
     // 기간별로 모든 파일을 로드하는 새로운 메서드 (스트리밍 방식으로 메모리 최적화)
     async loadDataByDateRange(startDate, endDate, uddiName = 'pension_workplace', workplaceNameFilter = null) {
+        const overallStartTime = Date.now();
+        console.log(`⏱️ 기간별 데이터 로드 시작: ${startDate} ~ ${endDate}`);
+        if (workplaceNameFilter) {
+            console.log(`🔍 사업장명 필터: ${workplaceNameFilter}`);
+        }
+
         try {
-            console.log(`📅 기간별 데이터 로드: ${startDate} ~ ${endDate}`);
-            if (workplaceNameFilter) {
-                console.log(`🔍 사업장명 필터: ${workplaceNameFilter}`);
-            }
 
             const files = await fs.readdir(this.sourceDir);
 
@@ -738,102 +793,135 @@ class DataCollector {
 
             // 파일을 병렬로 처리하기 위한 Promise 배열 생성
             const fileProcessingPromises = allFiles.map(async (fileInfo) => {
+                const fileStartTime = Date.now();
                 const filePath = path.join(this.sourceDir, fileInfo.name);
 
-                // 파일명에서 날짜 추출 (다양한 패턴 지원)
-                let monthYear;
-                if (fileInfo.name.startsWith('pension_workplace_')) {
-                    monthYear = fileInfo.name.match(/(\d{4}-\d{2})\.(parquet|json)$/)?.[1];
-                } else if (fileInfo.name.startsWith('pension_')) {
-                    monthYear = fileInfo.name.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.(parquet|json)$/)?.[1];
-                }
+                try {
+                    // 파일명에서 날짜 추출 (다양한 패턴 지원)
+                    let monthYear;
+                    if (fileInfo.name.startsWith('pension_workplace_')) {
+                        monthYear = fileInfo.name.match(/(\d{4}-\d{2})\.(parquet|json)$/)?.[1];
+                    } else if (fileInfo.name.startsWith('pension_')) {
+                        monthYear = fileInfo.name.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.(parquet|json)$/)?.[1];
+                    }
 
-                console.log(`📖 ${fileInfo.name} 로드 시작... (${monthYear})`);
+                    console.log(`📖 ${fileInfo.name} 로드 시작... (${monthYear})`);
 
-                let fileMetadata;
-                let fileData = [];
-                let filteredCount = 0;
-                let recordCount = 0;
+                    let fileMetadata;
+                    let fileData = [];
+                    let filteredCount = 0;
+                    let recordCount = 0;
 
-                if (fileInfo.type === 'parquet') {
-                    // Parquet 파일 스트리밍 읽기
-                    const reader = await parquet.ParquetReader.openFile(filePath);
-                    const cursor = reader.getCursor();
+                    if (fileInfo.type === 'parquet') {
+                        // 최적화된 Parquet 파일 스트리밍 읽기
+                        const reader = await parquet.ParquetReader.openFile(filePath);
+                        const cursor = reader.getCursor();
+                        const batchSize = 10000;
 
-                    let record = null;
+                        let record = null;
 
-                    while (record = await cursor.next()) {
-                        recordCount++;
+                        while (record = await cursor.next()) {
+                            recordCount++;
 
-                        // 사업장명 필터링 (제공된 경우에만)
-                        if (workplaceNameFilter) {
-                            const workplaceName = record['사업장명'];
-                            if (!workplaceName || !workplaceName.toLowerCase().includes(workplaceNameFilter.toLowerCase())) {
-                                continue; // 조건에 맞지 않으면 스킵
+                            // 사업장명 필터링 (제공된 경우에만)
+                            if (workplaceNameFilter) {
+                                const workplaceName = record['사업장명'];
+                                if (!workplaceName || !workplaceName.toLowerCase().includes(workplaceNameFilter.toLowerCase())) {
+                                    continue; // 조건에 맞지 않으면 스킵
+                                }
+                            }
+
+                            fileData.push(record);
+                            filteredCount++;
+
+                            // 주기적으로 진행상황 표시 및 메모리 관리
+                            if (recordCount % batchSize === 0) {
+                                const memUsage = this.getMemoryUsage();
+                                const elapsed = ((Date.now() - fileStartTime) / 1000).toFixed(1);
+                                console.log(`    📊 ${fileInfo.name}: ${recordCount.toLocaleString()}개 처리, ${filteredCount.toLocaleString()}개 필터링 (${elapsed}초 경과, 메모리: ${memUsage.usedMB}MB)`);
+
+                                // 메모리 사용량이 높으면 가비지 컬렉션 실행
+                                if (memUsage.usedMB > 500 && global.gc) {
+                                    global.gc();
+                                }
                             }
                         }
 
-                        fileData.push(record);
-                        filteredCount++;
+                        await reader.close();
 
-                        // 주기적으로 진행상황 표시
-                        if (recordCount % 10000 === 0) {
-                            const memUsage = this.getMemoryUsage();
-                            console.log(`    📊 ${fileInfo.name}: ${recordCount.toLocaleString()}개 처리, ${filteredCount.toLocaleString()}개 필터링 (메모리: ${memUsage.usedMB}MB)`);
+                        // 메타데이터 파일 로드
+                        const metadataPath = filePath.replace('.parquet', '_metadata.json');
+                        try {
+                            const metadataContent = await fs.readFile(metadataPath, 'utf8');
+                            fileMetadata = JSON.parse(metadataContent);
+                        } catch (metaError) {
+                            console.warn(`⚠️ 메타데이터 파일 로드 실패: ${metadataPath}`);
+                            fileMetadata = { uddiName, monthYear };
                         }
-                    }
 
-                    await reader.close();
+                    } else {
+                        // JSON 파일 처리 (호환성)
+                        const content = await fs.readFile(filePath, 'utf8');
+                        const jsonData = JSON.parse(content);
+                        fileMetadata = jsonData.metadata;
 
-                    // 메타데이터 파일 로드
-                    const metadataPath = filePath.replace('.parquet', '_metadata.json');
-                    try {
-                        const metadataContent = await fs.readFile(metadataPath, 'utf8');
-                        fileMetadata = JSON.parse(metadataContent);
-                    } catch (metaError) {
-                        console.warn(`⚠️ 메타데이터 파일 로드 실패: ${metadataPath}`);
-                        fileMetadata = { uddiName, monthYear };
-                    }
+                        // JSON 데이터도 스트리밍 방식으로 필터링
+                        for (let i = 0; i < jsonData.data.length; i++) {
+                            const record = jsonData.data[i];
+                            recordCount++;
 
-                } else {
-                    // JSON 파일 처리 (호환성)
-                    const content = await fs.readFile(filePath, 'utf8');
-                    const jsonData = JSON.parse(content);
-                    fileMetadata = jsonData.metadata;
+                            // 사업장명 필터링 (제공된 경우에만)
+                            if (workplaceNameFilter) {
+                                const workplaceName = record['사업장명'];
+                                if (!workplaceName || !workplaceName.toLowerCase().includes(workplaceNameFilter.toLowerCase())) {
+                                    continue; // 조건에 맞지 않으면 스킵
+                                }
+                            }
 
-                    // JSON 데이터도 스트리밍 방식으로 필터링
-                    for (let i = 0; i < jsonData.data.length; i++) {
-                        const record = jsonData.data[i];
-                        recordCount++;
+                            fileData.push(record);
+                            filteredCount++;
 
-                        // 사업장명 필터링 (제공된 경우에만)
-                        if (workplaceNameFilter) {
-                            const workplaceName = record['사업장명'];
-                            if (!workplaceName || !workplaceName.toLowerCase().includes(workplaceNameFilter.toLowerCase())) {
-                                continue; // 조건에 맞지 않으면 스킵
+                            // 주기적으로 진행상황 표시
+                            if ((i + 1) % 10000 === 0) {
+                                const elapsed = ((Date.now() - fileStartTime) / 1000).toFixed(1);
+                                console.log(`    📊 ${fileInfo.name}: ${(i + 1).toLocaleString()}개 처리, ${filteredCount.toLocaleString()}개 필터링 (${elapsed}초 경과)`);
                             }
                         }
-
-                        fileData.push(record);
-                        filteredCount++;
-
-                        // 주기적으로 진행상황 표시
-                        if ((i + 1) % 10000 === 0) {
-                            console.log(`    📊 ${fileInfo.name}: ${(i + 1).toLocaleString()}개 처리, ${filteredCount.toLocaleString()}개 필터링`);
-                        }
                     }
+
+                    const fileEndTime = Date.now();
+                    const fileLoadTime = ((fileEndTime - fileStartTime) / 1000).toFixed(2);
+                    console.log(`  ✅ ${fileInfo.name}: ${filteredCount.toLocaleString()}개 레코드 수집 완료 (${fileLoadTime}초)`);
+
+                    return {
+                        fileName: fileInfo.name,
+                        monthYear,
+                        data: fileData,
+                        metadata: fileMetadata,
+                        recordCount,
+                        filteredCount,
+                        loadTime: fileLoadTime,
+                        success: true,
+                        error: null
+                    };
+
+                } catch (error) {
+                    const fileEndTime = Date.now();
+                    const fileLoadTime = ((fileEndTime - fileStartTime) / 1000).toFixed(2);
+                    console.error(`❌ ${fileInfo.name} 처리 실패 (${fileLoadTime}초):`, error.message);
+
+                    return {
+                        fileName: fileInfo.name,
+                        monthYear: null,
+                        data: [],
+                        metadata: null,
+                        recordCount: 0,
+                        filteredCount: 0,
+                        loadTime: fileLoadTime,
+                        success: false,
+                        error: error.message
+                    };
                 }
-
-                console.log(`  ✅ ${fileInfo.name}: ${filteredCount.toLocaleString()}개 레코드 수집 완료`);
-
-                return {
-                    fileName: fileInfo.name,
-                    monthYear,
-                    data: fileData,
-                    metadata: fileMetadata,
-                    recordCount,
-                    filteredCount
-                };
             });
 
             // 모든 파일 처리를 병렬로 실행
@@ -841,16 +929,28 @@ class DataCollector {
             const fileResults = await Promise.all(fileProcessingPromises);
 
             // 결과를 합치기
+            let successfulFiles = 0;
+            let failedFiles = 0;
             for (const result of fileResults) {
-                allData.push(...result.data);
-                totalProcessedRecords += result.recordCount;
+                if (result.success) {
+                    allData.push(...result.data);
+                    totalProcessedRecords += result.recordCount;
 
-                // 첫 번째 파일의 메타데이터를 기본으로 사용
-                if (!combinedMetadata) {
-                    combinedMetadata = { ...result.metadata };
+                    // 첫 번째 성공한 파일의 메타데이터를 기본으로 사용
+                    if (!combinedMetadata && result.metadata) {
+                        combinedMetadata = { ...result.metadata };
+                    }
+
+                    console.log(`🔗 ${result.fileName} 병합 완료: ${result.filteredCount.toLocaleString()}개 레코드`);
+                    successfulFiles++;
+                } else {
+                    console.error(`❌ ${result.fileName} 처리 실패: ${result.error}`);
+                    failedFiles++;
                 }
+            }
 
-                console.log(`🔗 ${result.fileName} 병합 완료: ${result.filteredCount.toLocaleString()}개 레코드`);
+            if (failedFiles > 0) {
+                console.warn(`⚠️ ${failedFiles}개 파일 처리 실패, ${successfulFiles}개 파일 성공`);
             }
 
             // 메모리 정리
@@ -859,27 +959,60 @@ class DataCollector {
             }
 
             // 통합 메타데이터 생성
+            if (!combinedMetadata) {
+                combinedMetadata = {
+                    uddiName: uddiName,
+                    totalRecords: 0,
+                    totalProcessedRecords: 0
+                };
+            }
             combinedMetadata.totalRecords = allData.length;
             combinedMetadata.totalProcessedRecords = totalProcessedRecords;
             combinedMetadata.dateRange = { startDate, endDate };
             combinedMetadata.filesCount = allFiles.length;
+            combinedMetadata.successfulFiles = successfulFiles;
+            combinedMetadata.failedFiles = failedFiles;
             combinedMetadata.loadedAt = new Date().toISOString();
             combinedMetadata.workplaceNameFilter = workplaceNameFilter;
 
-            console.log(`🎉 기간별 데이터 로드 완료: ${allData.length.toLocaleString()}개 레코드 수집 (${totalProcessedRecords.toLocaleString()}개 중, ${allFiles.length}개 파일)`);
+            const overallEndTime = Date.now();
+            const totalLoadTime = ((overallEndTime - overallStartTime) / 1000).toFixed(2);
+            console.log(`🎉 기간별 데이터 로드 완료: ${allData.length.toLocaleString()}개 레코드 수집 (${totalProcessedRecords.toLocaleString()}개 중, ${allFiles.length}개 파일, 총 ${totalLoadTime}초)`);
+
+            // 파일별 로드 시간 요약
+            console.log(`📋 파일별 로드 시간 요약:`);
+            fileResults.forEach(result => {
+                if (result.success) {
+                    console.log(`  ✅ ${result.fileName}: ${result.loadTime}초 (${result.filteredCount.toLocaleString()}개 레코드)`);
+                } else {
+                    console.log(`  ❌ ${result.fileName}: ${result.loadTime}초 (실패: ${result.error})`);
+                }
+            });
 
             return {
                 success: true,
                 metadata: combinedMetadata,
                 data: allData,
-                filesLoaded: allFiles.length
+                filesLoaded: allFiles.length,
+                successfulFiles: successfulFiles,
+                failedFiles: failedFiles,
+                totalLoadTime: totalLoadTime,
+                fileLoadTimes: fileResults.map(r => ({
+                    fileName: r.fileName,
+                    loadTime: r.loadTime,
+                    success: r.success,
+                    error: r.error
+                }))
             };
 
         } catch (error) {
-            console.error('기간별 데이터 로드 실패:', error.message);
+            const overallEndTime = Date.now();
+            const totalTime = ((overallEndTime - overallStartTime) / 1000).toFixed(2);
+            console.error(`❌ 기간별 데이터 로드 실패 (${totalTime}초):`, error.message);
             return {
                 success: false,
-                error: '기간별 데이터 로드 중 오류가 발생했습니다.'
+                error: '기간별 데이터 로드 중 오류가 발생했습니다.',
+                totalLoadTime: totalTime
             };
         }
     }

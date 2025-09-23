@@ -77,6 +77,7 @@ app.get('/api/available-data', async (req, res) => {
 
 // API 라우트: 사업장 데이터 조회
 app.post('/api/workplace-data', async (req, res) => {
+    const requestStartTime = Date.now();
     try {
         const { workplaceName, startDate, endDate } = req.body;
 
@@ -87,10 +88,12 @@ app.post('/api/workplace-data', async (req, res) => {
             });
         }
 
-        console.log(`데이터 조회 요청: ${workplaceName} (${startDate} ~ ${endDate})`);
+        console.log(`⏱️ API 요청 시작: ${workplaceName} (${startDate} ~ ${endDate})`);
 
         // 로컬 데이터에서 기간별로 모든 파일 로드 (스트리밍 방식으로 사업장명 필터링 포함)
+        const dataLoadStartTime = Date.now();
         const result = await dataCollector.loadDataByDateRange(startDate, endDate, 'pension_workplace', workplaceName);
+        const dataLoadTime = ((Date.now() - dataLoadStartTime) / 1000).toFixed(2);
 
         if (!result.success) {
             return res.status(404).json({
@@ -100,13 +103,15 @@ app.post('/api/workplace-data', async (req, res) => {
         }
 
         let rawData = result.data;
-        console.log(`✅ 로컬 데이터 로드 완료: ${rawData.length}개 레코드 (${result.metadata.totalProcessedRecords || 0}개 중 필터링, ${result.filesLoaded || 1}개 파일)`);
+        console.log(`✅ 로컬 데이터 로드 완료: ${rawData.length}개 레코드 (${result.metadata.totalProcessedRecords || 0}개 중 필터링, ${result.filesLoaded || 1}개 파일, ${dataLoadTime}초)`);
 
         // 추가 기간 필터링 (파일 기반 로드에서 누락된 부분 처리)
+        const filterStartTime = Date.now();
         if (startDate && endDate) {
             const beforeFilter = rawData.length;
             rawData = dataProcessor.filterDataByDateRange(rawData, startDate, endDate);
-            console.log(`📊 기간별 데이터 필터링 결과: ${beforeFilter}개 → ${rawData.length}개 레코드`);
+            const filterTime = ((Date.now() - filterStartTime) / 1000).toFixed(2);
+            console.log(`📊 기간별 데이터 필터링 결과: ${beforeFilter}개 → ${rawData.length}개 레코드 (${filterTime}초)`);
         }
 
         // 이미 스트리밍 중에 사업장명 필터링이 완료되었으므로 추가 필터링 불필요
@@ -157,9 +162,14 @@ app.post('/api/workplace-data', async (req, res) => {
         });
 
         // 데이터 처리
+        const processingStartTime = Date.now();
         const chartData = dataProcessor.processWorkplaceTimeSeries(rawData);
         const summary = dataProcessor.processWorkplaceSummary(rawData);
         const statistics = dataProcessor.generateStatistics(rawData);
+        const processingTime = ((Date.now() - processingStartTime) / 1000).toFixed(2);
+
+        const requestEndTime = Date.now();
+        const totalRequestTime = ((requestEndTime - requestStartTime) / 1000).toFixed(2);
 
         console.log(`\n📊 처리된 데이터 요약:`);
         console.log(`- 총 신규입사자: ${summary.totalNewHires.toLocaleString()}명`);
@@ -167,7 +177,11 @@ app.post('/api/workplace-data', async (req, res) => {
         console.log(`- 현재 총 인원: ${summary.currentTotal.toLocaleString()}명`);
         console.log(`- 월평균 변화: ${summary.averageMonthlyChange}명`);
 
-        console.log(`데이터 처리 완료: ${rawData.length}개 레코드\n`);
+        console.log(`\n⏱️ 처리 시간 요약:`);
+        console.log(`- 데이터 로드: ${dataLoadTime}초`);
+        console.log(`- 데이터 처리: ${processingTime}초`);
+        console.log(`- 총 요청 시간: ${totalRequestTime}초`);
+        console.log(`🎉 데이터 처리 완료: ${rawData.length}개 레코드\n`);
 
         res.json({
             success: true,
