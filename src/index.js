@@ -90,9 +90,9 @@ app.post('/api/workplace-data', async (req, res) => {
 
         console.log(`⏱️ API 요청 시작: ${workplaceName} (${startDate} ~ ${endDate})`);
 
-        // 🚀 고성능 DuckDB로 로컬 데이터에서 기간별로 모든 파일 로드 (사업장명 필터링 포함)
+        // 🦆 DuckDB SQL 질의로 로컬 데이터에서 기간별로 모든 파일 로드 (사업장명 필터링 포함)
         const dataLoadStartTime = Date.now();
-        const result = await dataCollector.loadDataByDateRangeFast(startDate, endDate, 'pension_workplace', workplaceName);
+        const result = await dataCollector.queryDataByDateRange(startDate, endDate, 'pension_workplace', workplaceName);
         const dataLoadTime = ((Date.now() - dataLoadStartTime) / 1000).toFixed(2);
 
         if (!result.success) {
@@ -378,8 +378,8 @@ app.get('/api/debug/sample', async (req, res) => {
 
         let result;
         if (startDate && endDate) {
-            // 🚀 고성능 기간별 데이터 로드
-            result = await dataCollector.loadDataByDateRangeFast(startDate, endDate);
+            // 🦆 DuckDB SQL 질의 기간별 데이터 로드
+            result = await dataCollector.queryDataByDateRange(startDate, endDate);
         } else {
             // 🚀 고성능 기본 데이터 로드
             result = await dataCollector.loadDataFast();
@@ -407,6 +407,84 @@ app.get('/api/debug/sample', async (req, res) => {
 });
 
 // 404 에러 처리
+// 🦆 사업장별 통계 질의 API
+app.get('/api/workplace-stats', async (req, res) => {
+    try {
+        const { startDate, endDate, workplaceName } = req.query;
+
+        if (!startDate || !endDate) {
+            return res.status(400).json({
+                success: false,
+                error: 'startDate와 endDate 파라미터가 필요합니다.'
+            });
+        }
+
+        console.log(`📊 사업장 통계 API 요청: ${workplaceName || '전체'} (${startDate} ~ ${endDate})`);
+
+        const result = await dataCollector.getWorkplaceStatistics(startDate, endDate, workplaceName);
+
+        if (!result.success) {
+            return res.status(404).json({
+                success: false,
+                error: result.error
+            });
+        }
+
+        res.json({
+            success: true,
+            data: result.data,
+            queryTime: result.queryTime,
+            recordCount: result.recordCount
+        });
+
+    } catch (error) {
+        console.error('사업장 통계 API 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: '서버 내부 오류가 발생했습니다.'
+        });
+    }
+});
+
+// 🔧 커스텀 SQL 질의 API (고급 사용자용)
+app.post('/api/custom-query', async (req, res) => {
+    try {
+        const { sql, startDate, endDate } = req.body;
+
+        if (!sql) {
+            return res.status(400).json({
+                success: false,
+                error: 'SQL 질의가 필요합니다.'
+            });
+        }
+
+        console.log(`🔧 커스텀 SQL API 요청: ${sql.substring(0, 100)}...`);
+
+        const result = await dataCollector.executeCustomSQL(sql, startDate, endDate);
+
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                error: result.error
+            });
+        }
+
+        res.json({
+            success: true,
+            data: result.data,
+            queryTime: result.queryTime,
+            recordCount: result.recordCount
+        });
+
+    } catch (error) {
+        console.error('커스텀 SQL API 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: '서버 내부 오류가 발생했습니다.'
+        });
+    }
+});
+
 app.use('*', (req, res) => {
     res.status(404).json({
         success: false,
@@ -427,6 +505,7 @@ app.use((error, req, res, next) => {
 app.listen(PORT, () => {
     console.log(`🚀 서버가 포트 ${PORT}에서 실행 중입니다.`);
     console.log(`📊 웹 인터페이스: http://localhost:${PORT}`);
+    console.log(`🦆 DuckDB SQL 질의 기능이 활성화되었습니다.`);
     console.log(`🔧 API 상태 확인: http://localhost:${PORT}/api/health`);
 
     // API 키 확인

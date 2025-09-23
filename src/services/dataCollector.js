@@ -2,6 +2,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
 const parquet = require('parquetjs');
+const DuckDBQueryService = require('./duckdbQueryService');
 require('dotenv').config();
 
 // 컬럼명 정리 및 타입 정보 분리
@@ -77,6 +78,9 @@ class DataCollector {
 
         // 성능 최적화 설정
         this.optimizedReading = true;
+
+        // DuckDB 질의 서비스
+        this.duckDBService = new DuckDBQueryService();
 
         // 기본 UDDI (호환성 유지)
         this.uddis = {
@@ -706,7 +710,53 @@ class DataCollector {
         }
     }
 
-    // 🚀 고성능 최적화된 기간별 데이터 로드 (권장)
+    // 🦆 DuckDB SQL 질의 기반 데이터 로드 (최고 성능, 권장)
+    async queryDataByDateRange(startDate, endDate, uddiName = 'pension_workplace', workplaceNameFilter = null) {
+        console.log(`🦆 DuckDB SQL 질의로 기간별 데이터 로드: ${startDate} ~ ${endDate}`);
+
+        try {
+            const result = await this.duckDBService.queryDataByDateRange(startDate, endDate, workplaceNameFilter, uddiName);
+            return result;
+        } catch (error) {
+            console.error('❌ DuckDB 질의 실패, 최적화 방식으로 폴백:', error.message);
+            // DuckDB 실패 시 기존 최적화 방식으로 폴백
+            return this.loadDataByDateRangeFast(startDate, endDate, uddiName, workplaceNameFilter);
+        }
+    }
+
+    // 📊 사업장별 통계 질의
+    async getWorkplaceStatistics(startDate, endDate, workplaceNameFilter = null) {
+        console.log(`📊 DuckDB로 사업장 통계 질의: ${startDate} ~ ${endDate}`);
+
+        try {
+            return await this.duckDBService.getWorkplaceStats(startDate, endDate, workplaceNameFilter);
+        } catch (error) {
+            console.error('❌ 사업장 통계 질의 실패:', error.message);
+            return {
+                success: false,
+                error: error.message,
+                data: []
+            };
+        }
+    }
+
+    // 🔧 커스텀 SQL 질의 (고급 사용자용)
+    async executeCustomSQL(sql, startDate = null, endDate = null) {
+        console.log(`🔧 커스텀 SQL 질의 실행`);
+
+        try {
+            return await this.duckDBService.executeCustomQuery(sql, startDate, endDate);
+        } catch (error) {
+            console.error('❌ 커스텀 SQL 질의 실패:', error.message);
+            return {
+                success: false,
+                error: error.message,
+                data: []
+            };
+        }
+    }
+
+    // 🚀 고성능 최적화된 기간별 데이터 로드 (폴백용)
     async loadDataByDateRangeFast(startDate, endDate, uddiName = 'pension_workplace', workplaceNameFilter = null) {
         const overallStartTime = Date.now();
         console.log(`🚀 고성능 최적화 로더로 기간별 데이터 로드 시작: ${startDate} ~ ${endDate}`);
