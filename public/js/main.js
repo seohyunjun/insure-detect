@@ -429,7 +429,7 @@ class PensionVisualization {
         tbody.innerHTML = '';
 
         if (!monthlyData || monthlyData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="no-data">데이터가 없습니다</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="no-data">데이터가 없습니다</td></tr>';
             return;
         }
 
@@ -441,6 +441,8 @@ class PensionVisualization {
 
             row.innerHTML = `
                 <td>${item.month}</td>
+                <td>${item.사업장명 || '-'}</td>
+                <td>${item.사업자등록번호 || '-'}</td>
                 <td>${item.newHires.toLocaleString()}명</td>
                 <td>${item.resignations.toLocaleString()}명</td>
                 <td>${item.total.toLocaleString()}명</td>
@@ -459,6 +461,7 @@ class PensionVisualization {
         const thead = document.querySelector('#dataTable thead tr');
         thead.innerHTML = `
             <th>사업장명</th>
+            <th>사업자등록번호</th>
             <th>총 신규입사자</th>
             <th>총 퇴사자</th>
             <th>현재 총 인원</th>
@@ -473,6 +476,7 @@ class PensionVisualization {
 
             row.innerHTML = `
                 <td>${item.name}</td>
+                <td>${item.사업자등록번호 || '-'}</td>
                 <td>${item.totalNewHires.toLocaleString()}명</td>
                 <td>${item.totalResignations.toLocaleString()}명</td>
                 <td>${item.currentTotal.toLocaleString()}명</td>

@@ -158,9 +158,15 @@ class DuckDBQueryService {
             // WHERE 조건 추가
             const conditions = [];
 
-            // 사업장명 필터링
+            // 사업장명 또는 사업자등록번호 필터링
             if (workplaceNameFilter) {
-                conditions.push(`사업장명 LIKE '%${workplaceNameFilter.replace(/'/g, "''")}%'`);
+                const escapedFilter = workplaceNameFilter.replace(/'/g, "''");
+                // 숫자만 포함된 경우 사업자등록번호로 간주
+                if (/^\d+$/.test(workplaceNameFilter)) {
+                    conditions.push(`사업자등록번호 LIKE '%${escapedFilter}%'`);
+                } else {
+                    conditions.push(`사업장명 LIKE '%${escapedFilter}%'`);
+                }
             }
 
             // 날짜 범위 필터링 (데이터에 dash가 포함되어 있음)
@@ -230,6 +236,7 @@ class DuckDBQueryService {
             let sql = `
                 SELECT
                     사업장명,
+                    사업자등록번호,
                     COUNT(*) as 총_레코드수,
                     SUM(CAST(가입자수 AS INTEGER)) as 총_가입자수,
                     SUM(CAST(신규취득자수 AS INTEGER)) as 총_신규취득자수,
@@ -240,11 +247,17 @@ class DuckDBQueryService {
             `;
 
             if (workplaceNameFilter) {
-                sql += ` WHERE 사업장명 LIKE '%${workplaceNameFilter.replace(/'/g, "''")}%'`;
+                const escapedFilter = workplaceNameFilter.replace(/'/g, "''");
+                // 숫자만 포함된 경우 사업자등록번호로 간주
+                if (/^\d+$/.test(workplaceNameFilter)) {
+                    sql += ` WHERE 사업자등록번호 LIKE '%${escapedFilter}%'`;
+                } else {
+                    sql += ` WHERE 사업장명 LIKE '%${escapedFilter}%'`;
+                }
             }
 
             sql += `
-                GROUP BY 사업장명
+                GROUP BY 사업장명, 사업자등록번호
                 ORDER BY 총_가입자수 DESC
                 LIMIT 100
             `;
