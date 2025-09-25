@@ -9,6 +9,7 @@ class PensionVisualization {
         this.bindEvents();
         await this.loadAvailablePeriods();
         this.setDefaultDates();
+        await this.loadWorkplaceSuggestions();
     }
 
     bindEvents() {
@@ -44,8 +45,18 @@ class PensionVisualization {
 
     setDefaultDates() {
         if (this.availablePeriods && this.availablePeriods.length > 0) {
-            // 최신 데이터로 기본 설정
-            this.handleQuickSelect('latest');
+            // 기본 설정: 종료기간은 최신, 시작기간은 3개월 전
+            const startSelect = document.getElementById('startDate');
+            const endSelect = document.getElementById('endDate');
+
+            // 종료기간: 최신 월
+            const latestPeriod = this.availablePeriods[this.availablePeriods.length - 1].period;
+            endSelect.value = latestPeriod;
+
+            // 시작기간: 3개월 전 (배열에서 뒤에서 4번째)
+            const threeMonthsAgoIndex = Math.max(0, this.availablePeriods.length - 4);
+            const threeMonthsAgoPeriod = this.availablePeriods[threeMonthsAgoIndex].period;
+            startSelect.value = threeMonthsAgoPeriod;
         }
     }
 
@@ -526,7 +537,7 @@ class PensionVisualization {
         startSelect.innerHTML = '<option value="">기간을 선택하세요...</option>';
         endSelect.innerHTML = '<option value="">기간을 선택하세요...</option>';
 
-        // 정렬된 기간 추가
+        // 시작날짜: 오름차순으로 추가
         this.availablePeriods.forEach(period => {
             const option = document.createElement('option');
             option.value = period.period;
@@ -535,6 +546,16 @@ class PensionVisualization {
             option.textContent = `${period.period} ${typeLabel}`;
 
             startSelect.appendChild(option.cloneNode(true));
+        });
+
+        // 종료날짜: 내림차순(최신순)으로 추가
+        [...this.availablePeriods].reverse().forEach(period => {
+            const option = document.createElement('option');
+            option.value = period.period;
+
+            const typeLabel = period.type === 'latest' ? '(최신)' : '';
+            option.textContent = `${period.period} ${typeLabel}`;
+
             endSelect.appendChild(option);
         });
     }
@@ -552,9 +573,9 @@ class PensionVisualization {
 
         switch (period) {
             case 'latest':
-                // 최신 데이터 선택
+                // 최신 데이터 선택 (최신 월만)
                 if (this.availablePeriods.length > 0) {
-                    const latest = this.availablePeriods[0].period;
+                    const latest = this.availablePeriods[this.availablePeriods.length - 1].period;
                     startSelect.value = latest;
                     endSelect.value = latest;
                 }
@@ -562,20 +583,21 @@ class PensionVisualization {
 
             case 'recent':
                 // 최근 3개월
-                if (this.availablePeriods.length >= 3) {
-                    startSelect.value = this.availablePeriods[2].period;
-                    endSelect.value = this.availablePeriods[0].period;
-                } else if (this.availablePeriods.length > 0) {
-                    startSelect.value = this.availablePeriods[this.availablePeriods.length - 1].period;
-                    endSelect.value = this.availablePeriods[0].period;
+                if (this.availablePeriods.length > 0) {
+                    const latestPeriod = this.availablePeriods[this.availablePeriods.length - 1].period;
+                    endSelect.value = latestPeriod;
+
+                    const threeMonthsAgoIndex = Math.max(0, this.availablePeriods.length - 4);
+                    const threeMonthsAgoPeriod = this.availablePeriods[threeMonthsAgoIndex].period;
+                    startSelect.value = threeMonthsAgoPeriod;
                 }
                 break;
 
             case 'all':
                 // 전체 기간
                 if (this.availablePeriods.length > 0) {
-                    startSelect.value = this.availablePeriods[this.availablePeriods.length - 1].period;
-                    endSelect.value = this.availablePeriods[0].period;
+                    startSelect.value = this.availablePeriods[0].period;
+                    endSelect.value = this.availablePeriods[this.availablePeriods.length - 1].period;
                 }
                 break;
         }
@@ -588,6 +610,75 @@ class PensionVisualization {
         if (startDate && !endSelect.value) {
             // 시작 날짜가 선택되고 종료 날짜가 비어있으면 같은 날짜로 설정
             endSelect.value = startDate;
+        }
+    }
+
+    // 사업장 제안 로드
+    async loadWorkplaceSuggestions() {
+        try {
+            const response = await fetch('/api/workplace-suggestions');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+
+            if (data.success) {
+                this.renderWorkplaceSuggestions(data.data);
+            }
+        } catch (error) {
+            console.error('사업장 제안 로드 실패:', error);
+            // 기본 제안 사업장들로 대체
+            this.renderWorkplaceSuggestions({
+                suggestions: ['삼성전자', '현대자동차', '엘지전자', 'SK하이닉스', '포스코', '롯데'],
+                recentPopular: [],
+                defaultSuggestions: ['삼성전자', '현대자동차', '엘지전자', 'SK하이닉스', '포스코', '롯데']
+            });
+        }
+    }
+
+    // 사업장 제안 버튼 렌더링
+    renderWorkplaceSuggestions(data) {
+        const suggestionsContainer = document.getElementById('suggestionsButtons');
+        if (!suggestionsContainer) return;
+
+        // 기존 버튼들 제거
+        suggestionsContainer.innerHTML = '';
+
+        // 제안 사업장들 표시
+        const suggestions = data.suggestions || [];
+        const recentPopular = data.recentPopular || [];
+
+        suggestions.forEach(workplace => {
+            const button = document.createElement('button');
+            button.className = 'suggestion-btn';
+
+            // 최근 인기 검색인지 확인
+            if (recentPopular.includes(workplace)) {
+                button.classList.add('recent-popular');
+            }
+
+            button.textContent = workplace;
+            button.type = 'button';
+            button.setAttribute('aria-label', `${workplace} 사업장명 입력`);
+
+            // 클릭 이벤트 추가
+            button.addEventListener('click', () => {
+                this.selectWorkplace(workplace);
+            });
+
+            suggestionsContainer.appendChild(button);
+        });
+    }
+
+    // 사업장 선택
+    selectWorkplace(workplaceName) {
+        const workplaceInput = document.getElementById('workplaceName');
+        if (workplaceInput) {
+            workplaceInput.value = workplaceName;
+            workplaceInput.focus();
+
+            // 값이 변경되었음을 알리는 이벤트 발생
+            workplaceInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
     }
 }

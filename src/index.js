@@ -6,6 +6,7 @@ require('dotenv').config();
 const PensionAPI = require('./api/pensionApi');
 const DataProcessor = require('./data/processor');
 const DataCollector = require('./services/dataCollector');
+const RecentSearchService = require('./services/recentSearchService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,6 +20,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 const pensionAPI = new PensionAPI();
 const dataProcessor = new DataProcessor();
 const dataCollector = new DataCollector();
+const recentSearchService = new RecentSearchService();
 
 // 메인 페이지 라우트
 app.get('/', (req, res) => {
@@ -357,8 +359,8 @@ app.get('/api/available-periods', async (req, res) => {
             }
         }
 
-        // 기간별로 정렬
-        availablePeriods.sort((a, b) => b.period.localeCompare(a.period));
+        // 기간별로 정렬 (오름차순)
+        availablePeriods.sort((a, b) => a.period.localeCompare(b.period));
 
         res.json({
             success: true,
@@ -424,11 +426,33 @@ app.get('/api/workplace-stats', async (req, res) => {
         const result = await dataCollector.getWorkplaceStatistics(startDate, endDate, workplaceName);
 
         if (!result.success) {
+            // 실패한 검색도 기록
+            await recentSearchService.addSearch({
+                type: 'workplace_stats',
+                startDate,
+                endDate,
+                workplaceName,
+                resultCount: 0,
+                queryTime: result.queryTime || '0',
+                success: false
+            });
+
             return res.status(404).json({
                 success: false,
                 error: result.error
             });
         }
+
+        // 성공한 검색 기록 추가
+        await recentSearchService.addSearch({
+            type: 'workplace_stats',
+            startDate,
+            endDate,
+            workplaceName,
+            resultCount: result.recordCount || result.data?.length || 0,
+            queryTime: result.queryTime || '0',
+            success: true
+        });
 
         res.json({
             success: true,
@@ -463,11 +487,33 @@ app.post('/api/custom-query', async (req, res) => {
         const result = await dataCollector.executeCustomSQL(sql, startDate, endDate);
 
         if (!result.success) {
+            // 실패한 커스텀 쿼리도 기록
+            await recentSearchService.addSearch({
+                type: 'custom_sql',
+                startDate,
+                endDate,
+                customSQL: sql.substring(0, 200), // SQL 앞부분만 저장
+                resultCount: 0,
+                queryTime: result.queryTime || '0',
+                success: false
+            });
+
             return res.status(400).json({
                 success: false,
                 error: result.error
             });
         }
+
+        // 성공한 커스텀 쿼리 기록 추가
+        await recentSearchService.addSearch({
+            type: 'custom_sql',
+            startDate,
+            endDate,
+            customSQL: sql.substring(0, 200), // SQL 앞부분만 저장
+            resultCount: result.recordCount || result.data?.length || 0,
+            queryTime: result.queryTime || '0',
+            success: true
+        });
 
         res.json({
             success: true,
@@ -478,6 +524,178 @@ app.post('/api/custom-query', async (req, res) => {
 
     } catch (error) {
         console.error('커스텀 SQL API 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: '서버 내부 오류가 발생했습니다.'
+        });
+    }
+});
+
+// 📝 최근 검색 내역 관련 API 엔드포인트들
+
+// 최근 검색 내역 조회
+app.get('/api/recent-searches', async (req, res) => {
+    try {
+        const { limit = 20, type } = req.query;
+
+        let searches;
+        if (type) {
+            searches = recentSearchService.getSearchesByType(type, parseInt(limit));
+        } else {
+            searches = recentSearchService.getRecentSearches(parseInt(limit));
+        }
+
+        res.json({
+            success: true,
+            data: searches,
+            total: searches.length
+        });
+
+    } catch (error) {
+        console.error('최근 검색 내역 조회 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: '서버 내부 오류가 발생했습니다.'
+        });
+    }
+});
+
+// 검색 내역 요약 정보
+app.get('/api/recent-searches/summary', async (req, res) => {
+    try {
+        const summary = recentSearchService.getSearchSummary();
+
+        res.json({
+            success: true,
+            data: summary
+        });
+
+    } catch (error) {
+        console.error('검색 내역 요약 조회 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: '서버 내부 오류가 발생했습니다.'
+        });
+    }
+});
+
+// 인기 검색 조건 분석
+app.get('/api/recent-searches/popular', async (req, res) => {
+    try {
+        const popularSearches = recentSearchService.getPopularSearches();
+
+        res.json({
+            success: true,
+            data: popularSearches
+        });
+
+    } catch (error) {
+        console.error('인기 검색 분석 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: '서버 내부 오류가 발생했습니다.'
+        });
+    }
+});
+
+// 특정 검색 내역 삭제
+app.delete('/api/recent-searches/:searchId', async (req, res) => {
+    try {
+        const { searchId } = req.params;
+
+        const deleted = await recentSearchService.deleteSearch(searchId);
+
+        if (deleted) {
+            res.json({
+                success: true,
+                message: '검색 내역이 삭제되었습니다.'
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                error: '검색 내역을 찾을 수 없습니다.'
+            });
+        }
+
+    } catch (error) {
+        console.error('검색 내역 삭제 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: '서버 내부 오류가 발생했습니다.'
+        });
+    }
+});
+
+// 모든 검색 내역 삭제
+app.delete('/api/recent-searches', async (req, res) => {
+    try {
+        await recentSearchService.clearAllSearches();
+
+        res.json({
+            success: true,
+            message: '모든 검색 내역이 삭제되었습니다.'
+        });
+
+    } catch (error) {
+        console.error('모든 검색 내역 삭제 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: '서버 내부 오류가 발생했습니다.'
+        });
+    }
+});
+
+// 🏢 사업장명 제안 API 엔드포인트
+app.get('/api/workplace-suggestions', async (req, res) => {
+    try {
+        // 인기 사업장 리스트 (실제로는 최근 검색이나 데이터에서 가져올 수 있음)
+        const popularWorkplaces = [
+            '삼성전자',
+            '현대자동차',
+            '엘지전자',
+            'SK하이닉스',
+            '포스코',
+            '롯데',
+            '현대건설',
+            '대한항공',
+            '국민은행',
+            '우리은행',
+            '신한은행',
+            '하나은행'
+        ];
+
+        // 최근 검색에서 인기 사업장명 가져오기
+        const recentSearches = recentSearchService.getRecentSearches(50);
+        const workplaceFrequency = {};
+
+        // 최근 검색에서 사업장명 추출하여 빈도 계산
+        recentSearches.forEach(search => {
+            if (search.parameters.workplaceName) {
+                const name = search.parameters.workplaceName;
+                workplaceFrequency[name] = (workplaceFrequency[name] || 0) + 1;
+            }
+        });
+
+        // 빈도순으로 정렬하여 상위 5개 추출
+        const recentPopular = Object.entries(workplaceFrequency)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 5)
+            .map(([name]) => name);
+
+        // 최근 인기 검색과 기본 인기 사업장 합치기 (중복 제거)
+        const suggestions = [...new Set([...recentPopular, ...popularWorkplaces])].slice(0, 12);
+
+        res.json({
+            success: true,
+            data: {
+                suggestions: suggestions,
+                recentPopular: recentPopular,
+                defaultSuggestions: popularWorkplaces.slice(0, 8)
+            }
+        });
+
+    } catch (error) {
+        console.error('사업장명 제안 조회 오류:', error);
         res.status(500).json({
             success: false,
             error: '서버 내부 오류가 발생했습니다.'
