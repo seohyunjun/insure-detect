@@ -34,7 +34,8 @@ class DuckDBQueryService {
                 const match = file.match(/(\d{4}-\d{2})\.parquet$/);
                 if (match) {
                     const fileDate = moment(match[1], 'YYYY-MM');
-                    return fileDate.isBetween(start, end, null, '[]');
+                    // isBetween 대신 >= 및 <= 연산자를 사용하여 종료 날짜 포함
+                    return fileDate.isSameOrAfter(start) && fileDate.isSameOrBefore(end);
                 }
             }
 
@@ -43,7 +44,8 @@ class DuckDBQueryService {
                 const match = file.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.parquet$/);
                 if (match) {
                     const fileDate = moment(match[1], 'YYYY-MM');
-                    return fileDate.isBetween(start, end, null, '[]');
+                    // isBetween 대신 >= 및 <= 연산자를 사용하여 종료 날짜 포함
+                    return fileDate.isSameOrAfter(start) && fileDate.isSameOrBefore(end);
                 }
             }
 

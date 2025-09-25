@@ -783,7 +783,7 @@ class DataCollector {
                     const match = file.match(/(\d{4}-\d{2})\.parquet$/);
                     if (match) {
                         const fileDate = moment(match[1], 'YYYY-MM');
-                        if (fileDate.isBetween(start, end, null, '[]')) {
+                        if (fileDate.isSameOrAfter(start) && fileDate.isSameOrBefore(end)) {
                             potentialFiles.push(file);
                             return true;
                         }
@@ -795,7 +795,7 @@ class DataCollector {
                     const match = file.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.parquet$/);
                     if (match) {
                         const fileDate = moment(match[1], 'YYYY-MM');
-                        if (fileDate.isBetween(start, end, null, '[]')) {
+                        if (fileDate.isSameOrAfter(start) && fileDate.isSameOrBefore(end)) {
                             potentialFiles.push(file);
                             return true;
                         }
@@ -1117,7 +1117,7 @@ class DataCollector {
                     const match = file.match(/(\d{4}-\d{2})\.parquet$/);
                     if (match) {
                         const fileDate = moment(match[1], 'YYYY-MM');
-                        return fileDate.isBetween(start, end, null, '[]');
+                        return fileDate.isSameOrAfter(start) && fileDate.isSameOrBefore(end);
                     }
                 }
 
@@ -1126,7 +1126,7 @@ class DataCollector {
                     const match = file.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.parquet$/);
                     if (match) {
                         const fileDate = moment(match[1], 'YYYY-MM');
-                        return fileDate.isBetween(start, end, null, '[]');
+                        return fileDate.isSameOrAfter(start) && fileDate.isSameOrBefore(end);
                     }
                 }
 
@@ -1142,7 +1142,7 @@ class DataCollector {
                     const match = file.match(/(\d{4}-\d{2})\.json$/);
                     if (match) {
                         const fileDate = moment(match[1], 'YYYY-MM');
-                        return fileDate.isBetween(start, end, null, '[]');
+                        return fileDate.isSameOrAfter(start) && fileDate.isSameOrBefore(end);
                     }
                 }
 
@@ -1151,7 +1151,7 @@ class DataCollector {
                     const match = file.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.json$/);
                     if (match) {
                         const fileDate = moment(match[1], 'YYYY-MM');
-                        return fileDate.isBetween(start, end, null, '[]');
+                        return fileDate.isSameOrAfter(start) && fileDate.isSameOrBefore(end);
                     }
                 }
 
@@ -2081,6 +2081,201 @@ class DataCollector {
             return {
                 success: false,
                 error: error.message
+            };
+        }
+    }
+
+    // UDDI ID로 직접 데이터 수집
+    async collectDataWithUddiId(uddiId, uddiName, forceUpdate = false) {
+        const startTime = Date.now();
+
+        try {
+            console.log(`🚀 UDDI ID로 데이터 수집 시작: ${uddiId}`);
+            console.log(`📁 저장명: ${uddiName}`);
+            console.log(`⚙️ 강제 업데이트: ${forceUpdate ? 'ON' : 'OFF'}\n`);
+
+            // 데이터 디렉토리 확인 및 생성
+            try {
+                await fs.access(this.sourceDir);
+            } catch {
+                await fs.mkdir(this.sourceDir, { recursive: true });
+                console.log(`📁 source 디렉토리 생성: ${this.sourceDir}`);
+            }
+
+            // 로그 디렉토리 확인 및 생성
+            try {
+                await fs.access(this.logsDir);
+            } catch {
+                await fs.mkdir(this.logsDir, { recursive: true });
+                console.log(`📁 logs 디렉토리 생성: ${this.logsDir}`);
+            }
+
+            // 파일명 생성 (날짜 기반)
+            const timestamp = new Date().toISOString().slice(0, 10);
+            const fileName = `${uddiName}_${timestamp}.parquet`;
+            const filePath = path.join(this.sourceDir, fileName);
+
+            // 기존 파일 체크
+            if (!forceUpdate) {
+                try {
+                    await fs.access(filePath);
+                    console.log(`📁 기존 파일 발견: ${fileName}`);
+                    console.log('💡 --force 옵션을 사용하여 강제 업데이트할 수 있습니다.');
+
+                    return {
+                        success: true,
+                        message: '기존 파일 사용',
+                        dataFile: filePath,
+                        totalRecords: 0,
+                        duration: (Date.now() - startTime) / 1000
+                    };
+                } catch {
+                    // 파일이 없으면 계속 진행
+                }
+            }
+
+            // API 호출 시작
+            console.log('🌐 API 데이터 수집 시작...');
+            let page = 1;
+            let allData = [];
+            let totalPages = 0;
+
+            while (true) {
+                console.log(`📄 페이지 ${page} 수집 중...`);
+
+                try {
+                    // uddiName에서 날짜 추출 (pension_2025-08 -> 2025-08)
+                    const dateMatch = uddiName.match(/(\d{4}-\d{2})/);
+                    const yearMonth = dateMatch ? dateMatch[1] : null;
+
+                    // API 파라미터 구성
+                    const apiParams = {
+                        page: page,
+                        perPage: this.pageSize,
+                        serviceKey: this.apiKey
+                    };
+
+                    // 날짜가 있으면 시작기간과 종료기간 추가
+                    if (yearMonth) {
+                        apiParams.strt_prid = yearMonth;
+                        apiParams.end_prid = yearMonth;
+                        console.log(`📅 조회 기간: ${yearMonth}`);
+                    }
+
+                    console.log(`🔗 요청 URL: ${this.baseUrl}/uddi:${uddiId}`);
+                    console.log(`📋 요청 파라미터:`, JSON.stringify(apiParams, null, 2));
+
+                    const response = await this.retryApiCall(
+                        () => axios.get(`${this.baseUrl}/uddi:${uddiId}`, {
+                            params: apiParams,
+                            timeout: this.timeoutMs,
+                            headers: {
+                                'Accept': 'application/json',
+                                'User-Agent': 'DataCollector/1.0'
+                            }
+                        }),
+                        `페이지 ${page} 데이터 수집`
+                    );
+
+                    const responseData = response.data;
+
+                    if (!responseData || !responseData.data || responseData.data.length === 0) {
+                        console.log(`📄 페이지 ${page}: 데이터 없음, 수집 완료`);
+                        break;
+                    }
+
+                    allData = allData.concat(responseData.data);
+                    totalPages = Math.ceil(responseData.totalCount / this.pageSize);
+
+                    console.log(`📄 페이지 ${page}/${totalPages}: ${responseData.data.length}개 레코드 수집`);
+
+                    if (page >= totalPages || responseData.data.length < this.pageSize) {
+                        break;
+                    }
+
+                    page++;
+
+                    // 페이지 간 딜레이
+                    if (page % 10 === 0) {
+                        console.log('⏳ 잠시 대기 중...');
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+
+                } catch (error) {
+                    if (error.message.includes('404') && page === 1) {
+                        throw new Error(`UDDI ID를 찾을 수 없습니다: ${uddiId}`);
+                    }
+                    throw error;
+                }
+            }
+
+            if (allData.length === 0) {
+                throw new Error('수집된 데이터가 없습니다.');
+            }
+
+            console.log(`✅ 총 ${allData.length.toLocaleString()}개 레코드 수집 완료`);
+
+            // 데이터 정리 및 Parquet 저장
+            const cleanedResult = cleanDataArray(allData);
+            await this.writeDataToParquet(filePath, cleanedResult.data, cleanedResult.schema);
+
+            console.log(`💾 Parquet 파일 저장 완료: ${fileName}`);
+
+            // 로그 기록
+            const logEntry = {
+                timestamp: new Date().toISOString(),
+                uddiId: uddiId,
+                uddiName: uddiName,
+                fileName: fileName,
+                totalRecords: allData.length,
+                totalPages: totalPages,
+                duration: (Date.now() - startTime) / 1000,
+                success: true
+            };
+
+            const logFile = path.join(this.logsDir, `${uddiName}_collection.log`);
+            await this.appendLog(logFile, logEntry);
+
+            const duration = (Date.now() - startTime) / 1000;
+
+            return {
+                success: true,
+                dataFile: filePath,
+                totalRecords: allData.length,
+                duration: duration,
+                metadata: {
+                    uddiId: uddiId,
+                    uddiName: uddiName,
+                    totalPages: totalPages,
+                    collectedAt: new Date().toISOString(),
+                    fileName: fileName
+                }
+            };
+
+        } catch (error) {
+            console.error('❌ 데이터 수집 실패:', error.message);
+
+            // 실패 로그 기록
+            const logEntry = {
+                timestamp: new Date().toISOString(),
+                uddiId: uddiId,
+                uddiName: uddiName,
+                error: error.message,
+                duration: (Date.now() - startTime) / 1000,
+                success: false
+            };
+
+            try {
+                const logFile = path.join(this.logsDir, `${uddiName}_collection.log`);
+                await this.appendLog(logFile, logEntry);
+            } catch (logError) {
+                console.error('로그 기록 실패:', logError.message);
+            }
+
+            return {
+                success: false,
+                error: error.message,
+                duration: (Date.now() - startTime) / 1000
             };
         }
     }

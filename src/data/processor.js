@@ -152,8 +152,15 @@ class DataProcessor {
             const netChange = totals.newAcqs - totals.loss;
             monthlyChanges.push(netChange);
 
+            // 해당 월의 첫 번째 레코드에서 사업장 정보 가져오기
+            const firstRecord = monthData[0] || {};
+            const workplaceName = firstRecord['사업장명'] || '';
+            const businessRegNo = firstRecord['사업자등록번호'] || '';
+
             monthlyData.push({
                 month: moment(month, 'YYYYMM').format('YYYY-MM'),
+                사업장명: workplaceName,
+                사업자등록번호: businessRegNo,
                 newHires: totals.newAcqs,
                 resignations: totals.loss,
                 total: totals.total,
@@ -239,7 +246,7 @@ class DataProcessor {
 
             if (!itemDate.isValid()) return false;
 
-            return itemDate.isBetween(start, end, null, '[]');
+            return itemDate.isSameOrAfter(start) && itemDate.isSameOrBefore(end);
         });
     }
 

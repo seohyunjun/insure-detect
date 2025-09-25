@@ -255,7 +255,7 @@ class PensionVisualization {
 
         // 차트 및 테이블 업데이트
         this.updateCharts(business.chartData);
-        this.updateTable(business.chartData.monthlyData);
+        this.updateTable(business.summary.monthlyData);
 
         // 개별 사업장 요약 정보 표시
         this.displaySingleBusinessSummary(business);
@@ -306,7 +306,7 @@ class PensionVisualization {
         this.updateSummary(data.summary);
         this.createTimeSeriesChart(data.chartData, workplaceName);
         this.createMonthlyChart(data.chartData, workplaceName);
-        this.updateTable(data.chartData.monthlyData);
+        this.updateTable(data.summary.monthlyData);
         this.showDataInfo();
     }
 
