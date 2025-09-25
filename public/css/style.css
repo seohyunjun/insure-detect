@@ -835,3 +835,66 @@ footer {
         transform: none;
     }
 }
+
+/* 사업장 탭 스타일 */
+.business-tabs {
+    margin-bottom: 2rem;
+}
+
+.business-tabs.hidden {
+    display: none;
+}
+
+.tabs-header h3 {
+    margin-bottom: 1rem;
+    color: #1d1d1f;
+    font-size: 1.1rem;
+}
+
+.tabs-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 1rem;
+    overflow-x: auto;
+    padding: 4px 0;
+}
+
+.business-tab {
+    padding: 8px 16px;
+    border: 2px solid #d2d2d7;
+    border-radius: 20px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    font-size: 0.9rem;
+    min-width: fit-content;
+}
+
+.business-tab:hover {
+    border-color: #007aff;
+    background: #f8f9ff;
+}
+
+.business-tab.active {
+    background: #007aff;
+    color: white;
+    border-color: #007aff;
+}
+
+.business-tab .business-name {
+    font-weight: 600;
+    display: block;
+}
+
+.business-tab .business-reg-no {
+    font-size: 0.8em;
+    opacity: 0.8;
+    display: block;
+    margin-top: 2px;
+}
+
+.business-tab.active .business-reg-no {
+    opacity: 0.9;
+}

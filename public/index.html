@@ -179,17 +179,30 @@
 
             <!-- 차트 섹션 -->
             <section class="chart-section">
-                <div class="chart-container">
-                    <h3>시계열 차트</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="timeSeriesChart"></canvas>
+                <!-- 사업장 탭 섹션 -->
+                <div id="businessTabs" class="business-tabs hidden">
+                    <div class="tabs-header">
+                        <h3>검색된 사업장</h3>
+                        <div class="tabs-nav" id="tabsNav">
+                            <!-- 탭들이 동적으로 생성됩니다 -->
+                        </div>
                     </div>
                 </div>
 
-                <div class="chart-container">
-                    <h3>월별 변화 차트</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="monthlyChart"></canvas>
+                <!-- 차트 컨테이너들 -->
+                <div id="chartsContainer">
+                    <div class="chart-container">
+                        <h3>시계열 차트</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="timeSeriesChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-container">
+                        <h3>월별 변화 차트</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="monthlyChart"></canvas>
+                        </div>
                     </div>
                 </div>
             </section>

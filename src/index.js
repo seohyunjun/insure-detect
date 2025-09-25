@@ -147,37 +147,57 @@ app.post('/api/workplace-data', async (req, res) => {
             console.log(`     - 가입자수: ${item['가입자수']}`);
         });
 
-        // 사업장명별 그룹화 확인
+        // 사업장별 그룹화 (사업장명 + 사업자등록번호 기준)
         const workplaceGroups = {};
         rawData.forEach(item => {
             const name = item['사업장명'];
-            if (!workplaceGroups[name]) {
-                workplaceGroups[name] = [];
+            const regNo = item['사업자등록번호'] || 'unknown';
+            const key = `${name}|${regNo}`;
+            if (!workplaceGroups[key]) {
+                workplaceGroups[key] = {
+                    사업장명: name,
+                    사업자등록번호: regNo,
+                    data: []
+                };
             }
-            workplaceGroups[name].push(item);
+            workplaceGroups[key].data.push(item);
         });
 
-        console.log(`- 고유 사업장 수: ${Object.keys(workplaceGroups).length}개`);
+        const workplaceList = Object.values(workplaceGroups);
+        console.log(`- 고유 사업장 수: ${workplaceList.length}개`);
         console.log(`- 사업장별 데이터 개수:`);
-        Object.entries(workplaceGroups).slice(0, 10).forEach(([name, data]) => {
-            console.log(`  ${name}: ${data.length}개`);
+        workplaceList.slice(0, 10).forEach(workplace => {
+            console.log(`  ${workplace.사업장명} (${workplace.사업자등록번호}): ${workplace.data.length}개`);
         });
 
-        // 데이터 처리
+        // 각 사업장별로 데이터 처리
         const processingStartTime = Date.now();
-        const chartData = dataProcessor.processWorkplaceTimeSeries(rawData);
-        const summary = dataProcessor.processWorkplaceSummary(rawData);
-        const statistics = dataProcessor.generateStatistics(rawData);
+        const businessResults = workplaceList.map(workplace => {
+            const chartData = dataProcessor.processWorkplaceTimeSeries(workplace.data);
+            const summary = dataProcessor.processWorkplaceSummary(workplace.data);
+            const statistics = dataProcessor.generateStatistics(workplace.data);
+
+            return {
+                사업장명: workplace.사업장명,
+                사업자등록번호: workplace.사업자등록번호,
+                chartData,
+                summary,
+                statistics,
+                rawDataCount: workplace.data.length
+            };
+        });
         const processingTime = ((Date.now() - processingStartTime) / 1000).toFixed(2);
 
         const requestEndTime = Date.now();
         const totalRequestTime = ((requestEndTime - requestStartTime) / 1000).toFixed(2);
 
-        console.log(`\n📊 처리된 데이터 요약:`);
-        console.log(`- 총 신규입사자: ${summary.totalNewHires.toLocaleString()}명`);
-        console.log(`- 총 퇴사자: ${summary.totalResignations.toLocaleString()}명`);
-        console.log(`- 현재 총 인원: ${summary.currentTotal.toLocaleString()}명`);
-        console.log(`- 월평균 변화: ${summary.averageMonthlyChange}명`);
+        console.log(`\n📊 처리된 데이터 요약 (${businessResults.length}개 사업장):`);
+        businessResults.forEach((business, index) => {
+            console.log(`${index + 1}. ${business.사업장명} (${business.사업자등록번호})`);
+            console.log(`   - 총 신규입사자: ${business.summary.totalNewHires.toLocaleString()}명`);
+            console.log(`   - 총 퇴사자: ${business.summary.totalResignations.toLocaleString()}명`);
+            console.log(`   - 현재 총 인원: ${business.summary.currentTotal.toLocaleString()}명`);
+        });
 
         console.log(`\n⏱️ 처리 시간 요약:`);
         console.log(`- 데이터 로드: ${dataLoadTime}초`);
@@ -188,10 +208,8 @@ app.post('/api/workplace-data', async (req, res) => {
         res.json({
             success: true,
             data: {
-                chartData,
-                summary,
-                statistics,
-                rawDataCount: rawData.length
+                businesses: businessResults,
+                totalRawDataCount: rawData.length
             }
         });
 

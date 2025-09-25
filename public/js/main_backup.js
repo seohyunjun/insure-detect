@@ -2,8 +2,6 @@ class PensionVisualization {
     constructor() {
         this.charts = {};
         this.currentData = null;
-        this.currentBusinesses = null;
-        this.currentBusinessIndex = 0;
         this.init();
     }
 
@@ -172,141 +170,11 @@ class PensionVisualization {
         }
     }
 
-    // 여러 사업장 표시
-    displayMultipleBusinesses(businesses, searchTerm) {
-        this.currentBusinesses = businesses;
-        this.currentBusinessIndex = 0;
-
-        // 탭 표시
-        this.showBusinessTabs(businesses);
-
-        // 첫 번째 사업장 데이터 표시
-        this.displayCurrentBusiness();
-
-        // 데이터 요약 표시 (전체 통합)
-        this.displayMultipleBusinessSummary(businesses);
-
-        console.log('여러 사업장 검색 결과:', businesses.length + '개');
-    }
-
-    // 단일 사업장 표시
-    displaySingleBusiness(business, searchTerm) {
-        this.currentBusinesses = [business];
-        this.currentBusinessIndex = 0;
-
-        // 탭 숨기기
-        this.hideBusinessTabs();
-
-        // 데이터 표시 (기존 방식과 동일)
-        this.displayData(business, searchTerm);
-    }
-
-    // 사업장 탭 표시
-    showBusinessTabs(businesses) {
-        const tabsContainer = document.getElementById('businessTabs');
-        const tabsNav = document.getElementById('tabsNav');
-
-        // 탭 네비게이션 생성
-        tabsNav.innerHTML = '';
-        businesses.forEach((business, index) => {
-            const tab = document.createElement('div');
-            tab.className = 'business-tab';
-            if (index === 0) tab.classList.add('active');
-
-            tab.innerHTML = `
-                <span class="business-name">${business.사업장명}</span>
-                <span class="business-reg-no">${business.사업자등록번호}</span>
-            `;
-
-            tab.addEventListener('click', () => this.switchToBusiness(index));
-            tabsNav.appendChild(tab);
-        });
-
-        tabsContainer.classList.remove('hidden');
-    }
-
-    // 사업장 탭 숨기기
-    hideBusinessTabs() {
-        const tabsContainer = document.getElementById('businessTabs');
-        tabsContainer.classList.add('hidden');
-    }
-
-    // 사업장 전환
-    switchToBusiness(index) {
-        if (index === this.currentBusinessIndex) return;
-
-        this.currentBusinessIndex = index;
-
-        // 탭 활성화 상태 업데이트
-        const tabs = document.querySelectorAll('.business-tab');
-        tabs.forEach((tab, i) => {
-            tab.classList.toggle('active', i === index);
-        });
-
-        // 현재 사업장 데이터 표시
-        this.displayCurrentBusiness();
-    }
-
-    // 현재 선택된 사업장 데이터 표시
-    displayCurrentBusiness() {
-        if (!this.currentBusinesses || this.currentBusinesses.length === 0) return;
-
-        const business = this.currentBusinesses[this.currentBusinessIndex];
-
-        // 차트 및 테이블 업데이트
-        this.updateCharts(business.chartData);
-        this.updateTable(business.chartData.monthlyData);
-
-        // 개별 사업장 요약 정보 표시
-        this.displaySingleBusinessSummary(business);
-    }
-
-    // 차트 업데이트 메서드
-    updateCharts(chartData) {
-        const business = this.currentBusinesses[this.currentBusinessIndex];
-        this.createTimeSeriesChart(chartData, business.사업장명 + ' (' + business.사업자등록번호 + ')');
-        this.createMonthlyChart(chartData, business.사업장명 + ' (' + business.사업자등록번호 + ')');
-    }
-
-    // 개별 사업장 요약 표시
-    displaySingleBusinessSummary(business) {
-        const summary = business.summary;
-
-        document.getElementById('totalNewHires').textContent = summary.totalNewHires.toLocaleString() + '명';
-        document.getElementById('totalResignations').textContent = summary.totalResignations.toLocaleString() + '명';
-        document.getElementById('currentTotal').textContent = summary.currentTotal.toLocaleString() + '명';
-        document.getElementById('averageChange').textContent = summary.averageMonthlyChange + '명/월';
-
-        // 데이터 정보 섹션 표시
-        document.getElementById('dataInfo').classList.remove('hidden');
-    }
-
-    // 여러 사업장 통합 요약 표시
-    displayMultipleBusinessSummary(businesses) {
-        const totalSummary = businesses.reduce((acc, business) => {
-            acc.totalNewHires += business.summary.totalNewHires;
-            acc.totalResignations += business.summary.totalResignations;
-            acc.currentTotal += business.summary.currentTotal;
-            acc.averageChange += parseFloat(business.summary.averageMonthlyChange);
-            return acc;
-        }, { totalNewHires: 0, totalResignations: 0, currentTotal: 0, averageChange: 0 });
-
-        const avgMonthlyChange = (totalSummary.averageChange / businesses.length).toFixed(1);
-
-        document.getElementById('totalNewHires').textContent = totalSummary.totalNewHires.toLocaleString() + '명 (전체)';
-        document.getElementById('totalResignations').textContent = totalSummary.totalResignations.toLocaleString() + '명 (전체)';
-        document.getElementById('currentTotal').textContent = totalSummary.currentTotal.toLocaleString() + '명 (전체)';
-        document.getElementById('averageChange').textContent = avgMonthlyChange + '명/월 (평균)';
-
-        // 데이터 정보 섹션 표시
-        document.getElementById('dataInfo').classList.remove('hidden');
-    }
-
     displayData(data, workplaceName) {
         this.updateSummary(data.summary);
         this.createTimeSeriesChart(data.chartData, workplaceName);
         this.createMonthlyChart(data.chartData, workplaceName);
-        this.updateTable(data.chartData.monthlyData);
+        this.updateTable(data.summary.monthlyData);
         this.showDataInfo();
     }
 
@@ -845,3 +713,126 @@ document.head.appendChild(style);
 document.addEventListener('DOMContentLoaded', () => {
     new PensionVisualization();
 });
+
+    // 여러 사업장 표시
+    displayMultipleBusinesses(businesses, searchTerm) {
+        this.currentBusinesses = businesses;
+        this.currentBusinessIndex = 0;
+        
+        // 탭 표시
+        this.showBusinessTabs(businesses);
+        
+        // 첫 번째 사업장 데이터 표시
+        this.displayCurrentBusiness();
+        
+        // 데이터 요약 표시
+        this.displayMultipleBusinessSummary(businesses);
+        
+        console.log('여러 사업장 검색 결과:', businesses.length + '개');
+    }
+
+    // 단일 사업장 표시
+    displaySingleBusiness(business, searchTerm) {
+        this.currentBusinesses = [business];
+        this.currentBusinessIndex = 0;
+        
+        // 탭 숨기기
+        this.hideBusinessTabs();
+        
+        // 데이터 표시 (기존 방식과 동일)
+        this.displayData(business, searchTerm);
+    }
+
+    // 사업장 탭 표시
+    showBusinessTabs(businesses) {
+        const tabsContainer = document.getElementById('businessTabs');
+        const tabsNav = document.getElementById('tabsNav');
+        
+        // 탭 네비게이션 생성
+        tabsNav.innerHTML = '';
+        businesses.forEach((business, index) => {
+            const tab = document.createElement('div');
+            tab.className = 'business-tab';
+            if (index === 0) tab.classList.add('active');
+            
+            tab.innerHTML = `
+                <span class="business-name">${business.사업장명}</span>
+                <span class="business-reg-no">${business.사업자등록번호}</span>
+            `;
+            
+            tab.addEventListener('click', () => this.switchToBusiness(index));
+            tabsNav.appendChild(tab);
+        });
+        
+        tabsContainer.classList.remove('hidden');
+    }
+
+    // 사업장 탭 숨기기
+    hideBusinessTabs() {
+        const tabsContainer = document.getElementById('businessTabs');
+        tabsContainer.classList.add('hidden');
+    }
+
+    // 사업장 전환
+    switchToBusiness(index) {
+        if (index === this.currentBusinessIndex) return;
+        
+        this.currentBusinessIndex = index;
+        
+        // 탭 활성화 상태 업데이트
+        const tabs = document.querySelectorAll('.business-tab');
+        tabs.forEach((tab, i) => {
+            tab.classList.toggle('active', i === index);
+        });
+        
+        // 현재 사업장 데이터 표시
+        this.displayCurrentBusiness();
+    }
+
+    // 현재 선택된 사업장 데이터 표시
+    displayCurrentBusiness() {
+        if (!this.currentBusinesses || this.currentBusinesses.length === 0) return;
+        
+        const business = this.currentBusinesses[this.currentBusinessIndex];
+        
+        // 차트 및 테이블 업데이트
+        this.updateCharts(business.chartData);
+        this.updateTable(business.chartData.monthlyData);
+        
+        // 개별 사업장 요약 정보 표시
+        this.displaySingleBusinessSummary(business);
+    }
+
+    // 개별 사업장 요약 표시
+    displaySingleBusinessSummary(business) {
+        const summary = business.summary;
+        
+        document.getElementById('totalNewHires').textContent = summary.totalNewHires.toLocaleString() + '명';
+        document.getElementById('totalResignations').textContent = summary.totalResignations.toLocaleString() + '명';
+        document.getElementById('currentTotal').textContent = summary.currentTotal.toLocaleString() + '명';
+        document.getElementById('averageChange').textContent = summary.averageMonthlyChange + '명/월';
+        
+        // 데이터 정보 섹션 표시
+        document.getElementById('dataInfo').classList.remove('hidden');
+    }
+
+    // 여러 사업장 통합 요약 표시
+    displayMultipleBusinessSummary(businesses) {
+        const totalSummary = businesses.reduce((acc, business) => {
+            acc.totalNewHires += business.summary.totalNewHires;
+            acc.totalResignations += business.summary.totalResignations;
+            acc.currentTotal += business.summary.currentTotal;
+            acc.averageChange += parseFloat(business.summary.averageMonthlyChange);
+            return acc;
+        }, { totalNewHires: 0, totalResignations: 0, currentTotal: 0, averageChange: 0 });
+        
+        const avgMonthlyChange = (totalSummary.averageChange / businesses.length).toFixed(1);
+        
+        document.getElementById('totalNewHires').textContent = totalSummary.totalNewHires.toLocaleString() + '명 (전체)';
+        document.getElementById('totalResignations').textContent = totalSummary.totalResignations.toLocaleString() + '명 (전체)';
+        document.getElementById('currentTotal').textContent = totalSummary.currentTotal.toLocaleString() + '명 (전체)';
+        document.getElementById('averageChange').textContent = avgMonthlyChange + '명/월 (평균)';
+        
+        // 데이터 정보 섹션 표시
+        document.getElementById('dataInfo').classList.remove('hidden');
+    }
