@@ -208,19 +208,44 @@ class PensionVisualization {
         const tabsContainer = document.getElementById('businessTabs');
         const tabsNav = document.getElementById('tabsNav');
 
+        // 선택된 사업장 추적 배열 초기화
+        if (!this.selectedBusinesses) {
+            this.selectedBusinesses = new Set();
+            this.selectedBusinesses.add(0); // 첫 번째 사업장 기본 선택
+        }
+
         // 탭 네비게이션 생성
         tabsNav.innerHTML = '';
+
+        // 합산 보기 탭 추가
+        const combinedTab = document.createElement('div');
+        combinedTab.className = 'business-tab combined-tab';
+        combinedTab.innerHTML = `
+            <span class="business-name">📊 합산 보기</span>
+            <span class="business-reg-no">선택된 사업장들 통합</span>
+        `;
+        combinedTab.addEventListener('click', () => this.showCombinedView());
+        tabsNav.appendChild(combinedTab);
+
         businesses.forEach((business, index) => {
             const tab = document.createElement('div');
             tab.className = 'business-tab';
             if (index === 0) tab.classList.add('active');
 
             tab.innerHTML = `
+                <label class="business-checkbox">
+                    <input type="checkbox" ${this.selectedBusinesses.has(index) ? 'checked' : ''}
+                           onchange="app.toggleBusinessSelection(${index})">
+                </label>
                 <span class="business-name">${business.사업장명}</span>
                 <span class="business-reg-no">${business.사업자등록번호}</span>
             `;
 
-            tab.addEventListener('click', () => this.switchToBusiness(index));
+            tab.addEventListener('click', (e) => {
+                if (e.target.type !== 'checkbox') {
+                    this.switchToBusiness(index);
+                }
+            });
             tabsNav.appendChild(tab);
         });
 
@@ -1011,6 +1036,282 @@ class PensionVisualization {
             workplaceInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
     }
+
+    // 사업장 선택 토글
+    toggleBusinessSelection(index) {
+        if (!this.selectedBusinesses) {
+            this.selectedBusinesses = new Set();
+        }
+
+        if (this.selectedBusinesses.has(index)) {
+            this.selectedBusinesses.delete(index);
+        } else {
+            this.selectedBusinesses.add(index);
+        }
+
+        // 선택된 사업장이 없으면 첫 번째를 기본 선택
+        if (this.selectedBusinesses.size === 0) {
+            this.selectedBusinesses.add(0);
+            // 체크박스 상태 업데이트
+            const checkbox = document.querySelector(`input[onchange="app.toggleBusinessSelection(0)"]`);
+            if (checkbox) checkbox.checked = true;
+        }
+
+        console.log('Selected businesses:', Array.from(this.selectedBusinesses));
+    }
+
+    // 합산 보기 표시
+    showCombinedView() {
+        if (!this.currentBusinesses || this.selectedBusinesses.size === 0) {
+            return;
+        }
+
+        // 모든 탭 비활성화
+        document.querySelectorAll('.business-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+
+        // 합산 탭 활성화
+        document.querySelector('.combined-tab').classList.add('active');
+
+        // 선택된 사업장들의 데이터 합산
+        const combinedData = this.combinedData();
+
+        // 합산된 데이터로 차트와 테이블 업데이트
+        this.displayCombinedData(combinedData);
+    }
+
+    // 선택된 사업장들의 데이터 합산
+    combinedData() {
+        const selectedBusinesses = Array.from(this.selectedBusinesses)
+            .map(index => this.currentBusinesses[index])
+            .filter(business => business);
+
+        if (selectedBusinesses.length === 0) {
+            return null;
+        }
+
+        // 모든 기간의 라벨 수집 (가장 긴 데이터를 기준으로)
+        let allLabels = [];
+        selectedBusinesses.forEach(business => {
+            if (business.chartData && business.chartData.labels) {
+                if (business.chartData.labels.length > allLabels.length) {
+                    allLabels = [...business.chartData.labels];
+                }
+            }
+        });
+
+        // 각 기간별로 데이터 합산
+        const combinedNewHires = new Array(allLabels.length).fill(0);
+        const combinedResignations = new Array(allLabels.length).fill(0);
+        const combinedTotals = new Array(allLabels.length).fill(0);
+        const combinedSalaries = new Array(allLabels.length).fill(0);
+
+        const monthlyData = [];
+
+        selectedBusinesses.forEach(business => {
+            if (business.chartData && business.chartData.datasets) {
+                const newHiresData = business.chartData.datasets[0]?.data || [];
+                const resignationsData = business.chartData.datasets[1]?.data || [];
+                const totalsData = business.chartData.datasets[2]?.data || [];
+
+                // 데이터 합산
+                for (let i = 0; i < allLabels.length; i++) {
+                    combinedNewHires[i] += newHiresData[i] || 0;
+                    combinedResignations[i] += resignationsData[i] || 0;
+                    combinedTotals[i] += totalsData[i] || 0;
+                }
+            }
+
+            // 월별 데이터 합산
+            if (business.summary && business.summary.monthlyData) {
+                business.summary.monthlyData.forEach((monthData, index) => {
+                    if (!monthlyData[index]) {
+                        monthlyData[index] = {
+                            month: monthData.month,
+                            사업장명: '합산',
+                            사업자등록번호: `${selectedBusinesses.length}개 사업장`,
+                            newHires: 0,
+                            resignations: 0,
+                            total: 0,
+                            netChange: 0,
+                            월국민연금금액: 0,
+                            개인납부국민연금금액: 0,
+                            월급여추정: 0,
+                            연간급여추정: 0
+                        };
+                    }
+
+                    monthlyData[index].newHires += monthData.newHires || 0;
+                    monthlyData[index].resignations += monthData.resignations || 0;
+                    monthlyData[index].total += monthData.total || 0;
+                    monthlyData[index].netChange += monthData.netChange || 0;
+                    monthlyData[index].월국민연금금액 += monthData.월국민연금금액 || 0;
+                    monthlyData[index].개인납부국민연금금액 += monthData.개인납부국민연금금액 || 0;
+                    monthlyData[index].월급여추정 += monthData.월급여추정 || 0;
+                    monthlyData[index].연간급여추정 += monthData.연간급여추정 || 0;
+
+                    combinedSalaries[index] += monthData.월급여추정 || 0;
+                });
+            }
+        });
+
+        // 차트 데이터 구성
+        const chartData = {
+            labels: allLabels,
+            datasets: [
+                {
+                    label: '신규입사자',
+                    data: combinedNewHires,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    tension: 0.1,
+                    yAxisID: 'y'
+                },
+                {
+                    label: '퇴사자',
+                    data: combinedResignations,
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    tension: 0.1,
+                    yAxisID: 'y'
+                },
+                {
+                    label: '총 인원',
+                    data: combinedTotals,
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    tension: 0.1,
+                    yAxisID: 'y1',
+                    fill: false
+                }
+            ]
+        };
+
+        // 요약 데이터 계산
+        const totalNewHires = combinedNewHires.reduce((sum, val) => sum + val, 0);
+        const totalResignations = combinedResignations.reduce((sum, val) => sum + val, 0);
+        const currentTotal = combinedTotals[combinedTotals.length - 1] || 0;
+        const averageMonthlyChange = monthlyData.length > 0 ?
+            monthlyData.reduce((sum, item) => sum + item.netChange, 0) / monthlyData.length : 0;
+
+        return {
+            chartData,
+            monthlyData,
+            salaryData: combinedSalaries,
+            summary: {
+                totalNewHires,
+                totalResignations,
+                currentTotal,
+                averageMonthlyChange: averageMonthlyChange.toFixed(1),
+                monthlyData
+            },
+            businessNames: selectedBusinesses.map(b => b.사업장명).join(', ')
+        };
+    }
+
+    // 합산된 데이터 표시
+    displayCombinedData(combinedData) {
+        if (!combinedData) return;
+
+        // 차트 업데이트
+        this.createTimeSeriesChart(combinedData.chartData, `합산 보기 (${combinedData.businessNames})`);
+        this.createCombinedSalaryChart(combinedData.chartData, combinedData.salaryData, `합산 보기 (${combinedData.businessNames})`);
+        this.createMonthlyChart(combinedData.chartData, `합산 보기 (${combinedData.businessNames})`);
+
+        // 테이블 및 요약 업데이트
+        this.updateTable(combinedData.monthlyData);
+        this.updateSummary(combinedData.summary);
+
+        // 데이터 정보 섹션 표시
+        document.getElementById('dataInfo').classList.remove('hidden');
+    }
+
+    // 합산된 급여 차트 생성
+    createCombinedSalaryChart(chartData, salaryData, title) {
+        const ctx = document.getElementById('salaryChart').getContext('2d');
+
+        if (this.charts.salary) {
+            this.charts.salary.destroy();
+        }
+
+        this.charts.salary = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [
+                    {
+                        label: '월급여추정 합계 (만원)',
+                        data: salaryData,
+                        borderColor: 'rgb(255, 206, 86)',
+                        backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                        tension: 0.1,
+                        yAxisID: 'y',
+                        fill: false
+                    },
+                    {
+                        label: '연간급여추정 합계 (만원)',
+                        data: salaryData.map(val => val * 12),
+                        borderColor: 'rgb(153, 102, 255)',
+                        backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                        tension: 0.1,
+                        yAxisID: 'y1',
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: `${title} - 급여 추정 합계`,
+                        font: {
+                            size: 16
+                        }
+                    },
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: '기간'
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: '월급여추정 합계 (만원)'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: '연간급여추정 합계 (만원)'
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                    }
+                }
+            }
+        });
+    }
 }
 
 // CSS 스타일 추가
@@ -1023,10 +1324,88 @@ style.textContent = `
     .text-danger {
         color: #dc3545 !important;
     }
+
+    /* 사업장 탭 체크박스 스타일 */
+    .business-checkbox {
+        margin-right: 12px;
+        display: flex;
+        align-items: center;
+    }
+
+    .business-checkbox input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        cursor: pointer;
+        accent-color: #007aff;
+    }
+
+    .business-tab {
+        display: flex;
+        align-items: center;
+        padding: 12px 16px;
+        border: 1px solid #d1d1d6;
+        border-radius: 8px;
+        background: #ffffff;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-bottom: 8px;
+        user-select: none;
+    }
+
+    .business-tab:hover {
+        background: #f5f5f7;
+        border-color: #007aff;
+    }
+
+    .business-tab.active {
+        background: #007aff;
+        color: white;
+        border-color: #007aff;
+    }
+
+    .business-tab.active .business-checkbox input[type="checkbox"] {
+        accent-color: white;
+    }
+
+    .combined-tab {
+        background: linear-gradient(135deg, #34c759 0%, #30d158 100%);
+        color: white;
+        border-color: #34c759;
+        font-weight: 600;
+    }
+
+    .combined-tab:hover {
+        background: linear-gradient(135deg, #30d158 0%, #32d74b 100%);
+    }
+
+    .combined-tab.active {
+        background: linear-gradient(135deg, #28cd41 0%, #30d158 100%);
+        box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3);
+    }
+
+    .business-name {
+        font-weight: 600;
+        font-size: 14px;
+        flex-grow: 1;
+    }
+
+    .business-reg-no {
+        font-size: 12px;
+        opacity: 0.7;
+        margin-left: 8px;
+    }
+
+    .business-tab.active .business-reg-no {
+        opacity: 0.9;
+    }
 `;
 document.head.appendChild(style);
 
+// 전역 변수로 앱 인스턴스 저장
+let app;
+
 // 페이지 로드 시 초기화
 document.addEventListener('DOMContentLoaded', () => {
-    new PensionVisualization();
+    app = new PensionVisualization();
 });
