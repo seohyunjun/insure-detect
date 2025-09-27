@@ -443,10 +443,20 @@ header p {
 .chart-container {
     background: #ffffff;
     padding: 40px;
+    margin-bottom: 40px;
     border-radius: 18px;
     box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
     backdrop-filter: saturate(180%) blur(20px);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+.chart-container:last-child {
+    margin-bottom: 32px;
+}
+
+/* 차트 컨테이너 전체 영역 */
+#chartsContainer {
+    padding: 16px 0;
 }
 
 .chart-container h3 {
@@ -676,6 +686,15 @@ footer {
 
     .data-info, .chart-container, .table-section {
         padding: 24px;
+        margin-bottom: 28px;
+    }
+
+    .chart-container:last-child {
+        margin-bottom: 24px;
+    }
+
+    #chartsContainer {
+        padding: 12px 0;
     }
 
     th, td {
