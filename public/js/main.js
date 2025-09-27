@@ -266,8 +266,10 @@ class PensionVisualization {
     // 차트 업데이트 메서드
     updateCharts(chartData) {
         const business = this.currentBusinesses[this.currentBusinessIndex];
-        this.createTimeSeriesChart(chartData, business.사업장명 + ' (' + business.사업자등록번호 + ')');
-        this.createMonthlyChart(chartData, business.사업장명 + ' (' + business.사업자등록번호 + ')');
+        const businessName = business.사업장명 + ' (' + business.사업자등록번호 + ')';
+        this.createTimeSeriesChart(chartData, businessName);
+        this.createSalaryChart(chartData, businessName);
+        this.createMonthlyChart(chartData, businessName);
     }
 
     // 개별 사업장 요약 표시
@@ -517,12 +519,30 @@ class PensionVisualization {
     extractSalaryData() {
         console.log('Extracting salary data...');
         console.log('Current data:', this.currentData);
+        console.log('Current businesses:', this.currentBusinesses);
+        console.log('Current business index:', this.currentBusinessIndex);
 
         const monthly = [];
         const yearly = [];
 
-        // 현재 데이터에서 급여 정보 추출
-        if (this.currentData && this.currentData.summary && this.currentData.summary.monthlyData) {
+        // 여러 사업장 데이터에서 현재 선택된 사업장의 급여 정보 추출
+        if (this.currentBusinesses && this.currentBusinesses.length > 0) {
+            const currentBusiness = this.currentBusinesses[this.currentBusinessIndex];
+            console.log('Current business:', currentBusiness);
+
+            if (currentBusiness && currentBusiness.summary && currentBusiness.summary.monthlyData) {
+                console.log('Business monthly data found:', currentBusiness.summary.monthlyData);
+
+                currentBusiness.summary.monthlyData.forEach((item, index) => {
+                    console.log(`Month ${index}:`, item);
+                    const monthlySalary = item.월급여추정 || 0;
+                    monthly.push(monthlySalary);
+                    yearly.push(monthlySalary * 12);
+                });
+            }
+        }
+        // 단일 사업장 또는 기존 형식 데이터 처리
+        else if (this.currentData && this.currentData.summary && this.currentData.summary.monthlyData) {
             console.log('Monthly data found:', this.currentData.summary.monthlyData);
 
             this.currentData.summary.monthlyData.forEach((item, index) => {
@@ -534,8 +554,16 @@ class PensionVisualization {
         }
 
         // 데이터가 없거나 부족할 경우 차트 라벨 길이에 맞춰 생성
-        if (monthly.length === 0 && this.currentData && this.currentData.chartData && this.currentData.chartData.labels) {
-            const dataLength = this.currentData.chartData.labels.length;
+        let chartLabels = null;
+        if (this.currentBusinesses && this.currentBusinesses.length > 0) {
+            const currentBusiness = this.currentBusinesses[this.currentBusinessIndex];
+            chartLabels = currentBusiness?.chartData?.labels;
+        } else if (this.currentData && this.currentData.chartData) {
+            chartLabels = this.currentData.chartData.labels;
+        }
+
+        if (monthly.length === 0 && chartLabels && chartLabels.length > 0) {
+            const dataLength = chartLabels.length;
             console.log('Generating salary data for', dataLength, 'periods');
 
             // 급여 데이터 생성 (현실적인 범위)
