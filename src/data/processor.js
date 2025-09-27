@@ -61,6 +61,7 @@ class DataProcessor {
         const newHires = [];
         const resignations = [];
         const totalMembers = [];
+        const estimatedSalaries = [];
 
         sortedMonths.forEach(month => {
             const monthData = groupedData[month];
@@ -70,12 +71,18 @@ class DataProcessor {
                 acc.newAcqs += this.parseNumber(item['신규취득자수']);
                 acc.loss += this.parseNumber(item['상실가입자수']);
                 acc.total += this.parseNumber(item['가입자수']);
+                acc.totalAmount += this.parseNumber(item['당월고지금액']);
                 return acc;
-            }, { newAcqs: 0, loss: 0, total: 0 });
+            }, { newAcqs: 0, loss: 0, total: 0, totalAmount: 0 });
 
             newHires.push(totals.newAcqs);
             resignations.push(totals.loss);
             totalMembers.push(totals.total);
+
+            // 급여 추정 계산
+            const 월국민연금금액 = totals.total > 0 ? Math.round(totals.totalAmount / totals.total) : 0;
+            const 월급여추정 = Math.round((월국민연금금액 / 9) * 100 / 10000); // 만원 단위
+            estimatedSalaries.push(월급여추정);
         });
 
         const endTime = Date.now();
@@ -106,6 +113,14 @@ class DataProcessor {
                     backgroundColor: 'rgba(54, 162, 235, 0.2)',
                     tension: 0.1,
                     yAxisID: 'y1'
+                },
+                {
+                    label: '월급여추정 (만원)',
+                    data: estimatedSalaries,
+                    borderColor: 'rgb(255, 206, 86)',
+                    backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                    tension: 0.1,
+                    yAxisID: 'y2'
                 }
             ]
         };
@@ -142,8 +157,9 @@ class DataProcessor {
                 acc.newAcqs += this.parseNumber(item['신규취득자수']);
                 acc.loss += this.parseNumber(item['상실가입자수']);
                 acc.total += this.parseNumber(item['가입자수']);
+                acc.totalAmount += this.parseNumber(item['당월고지금액']);
                 return acc;
-            }, { newAcqs: 0, loss: 0, total: 0 });
+            }, { newAcqs: 0, loss: 0, total: 0, totalAmount: 0 });
 
             totalNewHires += totals.newAcqs;
             totalResignations += totals.loss;
@@ -157,6 +173,12 @@ class DataProcessor {
             const workplaceName = firstRecord['사업장명'] || '';
             const businessRegNo = firstRecord['사업자등록번호'] || '';
 
+            // 급여 추정 계산
+            const 월국민연금금액 = totals.total > 0 ? Math.round(totals.totalAmount / totals.total) : 0;
+            const 개인납부국민연금금액 = Math.round(월국민연금금액 / 2);
+            const 월급여추정 = Math.round((월국민연금금액 / 9) * 100 / 10000); // 만원 단위
+            const 연간급여추정 = 월급여추정 * 12;
+
             monthlyData.push({
                 month: moment(month, 'YYYYMM').format('YYYY-MM'),
                 사업장명: workplaceName,
@@ -164,7 +186,12 @@ class DataProcessor {
                 newHires: totals.newAcqs,
                 resignations: totals.loss,
                 total: totals.total,
-                netChange
+                netChange,
+                당월고지금액: totals.totalAmount,
+                월국민연금금액,
+                개인납부국민연금금액,
+                월급여추정,
+                연간급여추정
             });
         });
 

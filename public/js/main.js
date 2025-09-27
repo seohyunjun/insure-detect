@@ -406,6 +406,18 @@ class PensionVisualization {
                         grid: {
                             drawOnChartArea: false,
                         },
+                    },
+                    y2: {
+                        type: 'linear',
+                        display: false,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: '월급여추정 (만원)'
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                        },
                     }
                 }
             }
@@ -570,7 +582,7 @@ class PensionVisualization {
         tbody.innerHTML = '';
 
         if (!monthlyData || monthlyData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="no-data">데이터가 없습니다</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" class="no-data">데이터가 없습니다</td></tr>';
             return;
         }
 
@@ -588,6 +600,10 @@ class PensionVisualization {
                 <td>${item.resignations.toLocaleString()}명</td>
                 <td>${item.total.toLocaleString()}명</td>
                 <td class="${netChangeClass}">${netChangeSymbol}${item.netChange.toLocaleString()}명</td>
+                <td>${(item.월국민연금금액 || 0).toLocaleString()}원</td>
+                <td>${(item.개인납부국민연금금액 || 0).toLocaleString()}원</td>
+                <td>${(item.월급여추정 || 0).toLocaleString()}만원</td>
+                <td>${(item.연간급여추정 || 0).toLocaleString()}만원</td>
             `;
 
             tbody.appendChild(row);

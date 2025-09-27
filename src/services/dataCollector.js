@@ -790,9 +790,9 @@ class DataCollector {
                     }
                 }
 
-                // pension_YYYY-MM_YYYY-MM.parquet 패턴
+                // pension_YYYY-MM_YYYY-MM.parquet 패턴 (두 번째 날짜가 실제 데이터 날짜)
                 if (file.startsWith('pension_')) {
-                    const match = file.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.parquet$/);
+                    const match = file.match(/pension_\d{4}-\d{2}_(\d{4}-\d{2})\.parquet$/);
                     if (match) {
                         const fileDate = moment(match[1], 'YYYY-MM');
                         if (fileDate.isSameOrAfter(start) && fileDate.isSameOrBefore(end)) {
@@ -1121,9 +1121,9 @@ class DataCollector {
                     }
                 }
 
-                // pension_YYYY-MM_YYYY-MM.parquet 패턴 (동적 엔드포인트)
+                // pension_YYYY-MM_YYYY-MM.parquet 패턴 (두 번째 날짜가 실제 데이터 날짜)
                 if (file.startsWith('pension_')) {
-                    const match = file.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.parquet$/);
+                    const match = file.match(/pension_\d{4}-\d{2}_(\d{4}-\d{2})\.parquet$/);
                     if (match) {
                         const fileDate = moment(match[1], 'YYYY-MM');
                         return fileDate.isSameOrAfter(start) && fileDate.isSameOrBefore(end);
@@ -1190,7 +1190,7 @@ class DataCollector {
                     if (fileInfo.name.startsWith('pension_workplace_')) {
                         monthYear = fileInfo.name.match(/(\d{4}-\d{2})\.(parquet|json)$/)?.[1];
                     } else if (fileInfo.name.startsWith('pension_')) {
-                        monthYear = fileInfo.name.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.(parquet|json)$/)?.[1];
+                        monthYear = fileInfo.name.match(/pension_\d{4}-\d{2}_(\d{4}-\d{2})\.(parquet|json)$/)?.[1];
                     }
 
                     console.log(`📖 ${fileInfo.name} 로드 시작... (${monthYear})`);
@@ -1818,8 +1818,8 @@ class DataCollector {
             // parquet 파일들에서 년월 추출
             files.forEach(file => {
                 if (file.endsWith('.parquet')) {
-                    // pension_YYYY-MM_YYYY-MM.parquet 패턴
-                    const match = file.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.parquet$/);
+                    // pension_YYYY-MM_YYYY-MM.parquet 패턴 (두 번째 날짜가 실제 데이터 날짜)
+                    const match = file.match(/pension_\d{4}-\d{2}_(\d{4}-\d{2})\.parquet$/);
                     if (match) {
                         monthsSet.add(match[1]);
                     }

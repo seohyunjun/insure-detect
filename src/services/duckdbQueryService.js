@@ -39,9 +39,9 @@ class DuckDBQueryService {
                 }
             }
 
-            // pension_YYYY-MM_YYYY-MM.parquet 패턴
+            // pension_YYYY-MM_YYYY-MM.parquet 패턴 (두 번째 날짜가 실제 데이터 날짜)
             if (file.startsWith('pension_')) {
-                const match = file.match(/pension_(\d{4}-\d{2})_\d{4}-\d{2}\.parquet$/);
+                const match = file.match(/pension_\d{4}-\d{2}_(\d{4}-\d{2})\.parquet$/);
                 if (match) {
                     const fileDate = moment(match[1], 'YYYY-MM');
                     // isBetween 대신 >= 및 <= 연산자를 사용하여 종료 날짜 포함
