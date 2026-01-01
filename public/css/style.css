@@ -1141,3 +1141,134 @@ tbody tr:hover {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* ========================================
+   사업자 유형 배지 스타일
+   ======================================== */
+.biz-type-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+    text-align: center;
+}
+
+/* 법인(영리) 본점/지점 - 블루 */
+.biz-type-corp {
+    background: rgba(0, 102, 255, 0.15);
+    color: var(--blue);
+    border: 1px solid rgba(0, 102, 255, 0.3);
+}
+
+[data-theme="light"] .biz-type-corp {
+    background: rgba(25, 118, 210, 0.1);
+    color: #1565c0;
+    border: 1px solid rgba(25, 118, 210, 0.25);
+}
+
+/* 법인(비영리) - 퍼플 */
+.biz-type-nonprofit {
+    background: rgba(156, 39, 176, 0.15);
+    color: #ce93d8;
+    border: 1px solid rgba(156, 39, 176, 0.3);
+}
+
+[data-theme="light"] .biz-type-nonprofit {
+    background: rgba(156, 39, 176, 0.1);
+    color: #7b1fa2;
+    border: 1px solid rgba(156, 39, 176, 0.25);
+}
+
+/* 개인 과세사업자 - 그린 */
+.biz-type-individual {
+    background: rgba(0, 255, 136, 0.12);
+    color: var(--green);
+    border: 1px solid rgba(0, 255, 136, 0.25);
+}
+
+[data-theme="light"] .biz-type-individual {
+    background: rgba(46, 125, 50, 0.1);
+    color: #2e7d32;
+    border: 1px solid rgba(46, 125, 50, 0.25);
+}
+
+/* 개인 면세사업자 - 시안 */
+.biz-type-taxfree {
+    background: rgba(0, 240, 255, 0.12);
+    color: var(--cyan);
+    border: 1px solid rgba(0, 240, 255, 0.25);
+}
+
+[data-theme="light"] .biz-type-taxfree {
+    background: rgba(0, 151, 167, 0.1);
+    color: #00838f;
+    border: 1px solid rgba(0, 151, 167, 0.25);
+}
+
+/* 국가·지방자치단체 - 골드 */
+.biz-type-gov {
+    background: rgba(255, 193, 7, 0.15);
+    color: #ffd54f;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+[data-theme="light"] .biz-type-gov {
+    background: rgba(255, 160, 0, 0.1);
+    color: #f57c00;
+    border: 1px solid rgba(255, 160, 0, 0.25);
+}
+
+/* 외국법인 - 마젠타 */
+.biz-type-foreign {
+    background: rgba(255, 0, 170, 0.12);
+    color: var(--magenta);
+    border: 1px solid rgba(255, 0, 170, 0.25);
+}
+
+[data-theme="light"] .biz-type-foreign {
+    background: rgba(216, 27, 96, 0.1);
+    color: #c2185b;
+    border: 1px solid rgba(216, 27, 96, 0.25);
+}
+
+/* 종교단체 - 오렌지 */
+.biz-type-religious {
+    background: rgba(255, 138, 101, 0.15);
+    color: #ffab91;
+    border: 1px solid rgba(255, 138, 101, 0.3);
+}
+
+[data-theme="light"] .biz-type-religious {
+    background: rgba(230, 74, 25, 0.1);
+    color: #e64a19;
+    border: 1px solid rgba(230, 74, 25, 0.25);
+}
+
+/* 기타/미분류 - 그레이 */
+.biz-type-other {
+    background: rgba(136, 136, 136, 0.15);
+    color: var(--text-gray);
+    border: 1px solid rgba(136, 136, 136, 0.25);
+}
+
+[data-theme="light"] .biz-type-other {
+    background: rgba(95, 99, 104, 0.1);
+    color: #5f6368;
+    border: 1px solid rgba(95, 99, 104, 0.2);
+}
+
+/* 탭 내 배지 스타일 조정 */
+.business-tab .biz-type-badge {
+    margin-left: 8px;
+    font-size: 0.65rem;
+    padding: 2px 8px;
+}
+
+/* 테이블 내 배지 스타일 조정 */
+#dataTable .biz-type-badge {
+    font-size: 0.65rem;
+    padding: 3px 8px;
+}
