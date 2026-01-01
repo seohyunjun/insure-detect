@@ -99,6 +99,9 @@ npm run dev
 
 # 또는 일반 실행
 npm start
+
+# pm2 run
+pm2 start 'npm start'
 ```
 
 ### 5단계: 브라우저에서 확인

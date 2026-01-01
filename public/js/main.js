@@ -1,3 +1,90 @@
+// 테마 관리 클래스
+class ThemeManager {
+    constructor() {
+        this.theme = this.getSavedTheme() || this.getSystemTheme();
+        this.init();
+    }
+
+    init() {
+        // 초기 테마 적용 (페이지 로드 시 깜빡임 방지를 위해 즉시 실행)
+        this.applyTheme(this.theme);
+        
+        // DOM이 로드된 후 이벤트 바인딩
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.bindEvents());
+        } else {
+            this.bindEvents();
+        }
+    }
+
+    bindEvents() {
+        const toggleBtn = document.getElementById('themeToggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => this.toggleTheme());
+        }
+
+        // 시스템 테마 변경 감지
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+            if (!this.getSavedTheme()) {
+                this.applyTheme(e.matches ? 'dark' : 'light');
+            }
+        });
+    }
+
+    getSavedTheme() {
+        return localStorage.getItem('pension-insight-theme');
+    }
+
+    getSystemTheme() {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    applyTheme(theme) {
+        this.theme = theme;
+        document.documentElement.setAttribute('data-theme', theme);
+        
+        // Chart.js 차트 색상 업데이트
+        this.updateChartColors(theme);
+    }
+
+    toggleTheme() {
+        const newTheme = this.theme === 'dark' ? 'light' : 'dark';
+        this.applyTheme(newTheme);
+        localStorage.setItem('pension-insight-theme', newTheme);
+    }
+
+    updateChartColors(theme) {
+        // Chart.js 기본 색상 업데이트
+        if (typeof Chart !== 'undefined') {
+            const textColor = theme === 'dark' ? '#888888' : '#5f6368';
+            const gridColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
+            
+            Chart.defaults.color = textColor;
+            Chart.defaults.borderColor = gridColor;
+            
+            // 기존 차트가 있으면 완전히 다시 그리기 (색상 변경을 위해)
+            if (window.app && window.app.currentBusinesses && window.app.currentBusinesses.length > 0) {
+                // 현재 데이터가 있으면 차트를 다시 생성
+                const currentBusiness = window.app.currentBusinesses[window.app.currentBusinessIndex];
+                if (currentBusiness && currentBusiness.chartData) {
+                    const businessName = currentBusiness.사업장명 + ' (' + currentBusiness.사업자등록번호 + ')';
+                    window.app.createTimeSeriesChart(currentBusiness.chartData, businessName);
+                    window.app.createSalaryChart(currentBusiness.chartData, businessName);
+                    window.app.createMonthlyChart(currentBusiness.chartData, businessName);
+                }
+            } else if (window.app && window.app.currentData && window.app.currentData.chartData) {
+                // 단일 사업장 데이터
+                window.app.createTimeSeriesChart(window.app.currentData.chartData, '');
+                window.app.createSalaryChart(window.app.currentData.chartData, '');
+                window.app.createMonthlyChart(window.app.currentData.chartData, '');
+            }
+        }
+    }
+}
+
+// 테마 매니저 인스턴스 생성 (즉시 실행)
+const themeManager = new ThemeManager();
+
 class PensionVisualization {
     constructor() {
         this.charts = {};
@@ -381,70 +468,224 @@ class PensionVisualization {
         changeElement.style.color = changeColor;
     }
 
+    // 테마 기반 차트 색상 가져오기
+    getChartColors() {
+        const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+        
+        return {
+            lime: isDark ? '#c8ff00' : '#00897b',
+            cyan: isDark ? '#00f0ff' : '#0097a7',
+            magenta: isDark ? '#ff00aa' : '#d81b60',
+            blue: isDark ? '#0066ff' : '#1976d2',
+            green: isDark ? '#00ff88' : '#2e7d32',
+            red: isDark ? '#ff4757' : '#e53935',
+            text: isDark ? '#888888' : '#5f6368',
+            textLight: isDark ? '#555555' : '#9aa0a6',
+            grid: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+            gridLight: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
+            bg: isDark ? '#111111' : '#ffffff'
+        };
+    }
+
+    // 공통 차트 옵션 가져오기
+    getChartOptions() {
+        const colors = this.getChartColors();
+        
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    align: 'end',
+                    labels: {
+                        color: colors.text,
+                        font: {
+                            family: "'Outfit', 'Pretendard Variable', sans-serif",
+                            size: 11,
+                            weight: '500'
+                        },
+                        padding: 16,
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        boxWidth: 8,
+                        boxHeight: 8
+                    }
+                },
+                title: {
+                    display: false // 제목은 HTML에서 처리
+                },
+                tooltip: {
+                    backgroundColor: colors.bg,
+                    titleColor: colors.lime,
+                    bodyColor: colors.text,
+                    borderColor: colors.grid,
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 8,
+                    titleFont: {
+                        family: "'Outfit', sans-serif",
+                        size: 13,
+                        weight: '700'
+                    },
+                    bodyFont: {
+                        family: "'Pretendard Variable', sans-serif",
+                        size: 12
+                    },
+                    displayColors: true,
+                    usePointStyle: true
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: colors.gridLight,
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: colors.textLight,
+                        font: {
+                            family: "'Outfit', sans-serif",
+                            size: 10,
+                            weight: '500'
+                        },
+                        padding: 8
+                    }
+                },
+                y: {
+                    grid: {
+                        color: colors.grid,
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: colors.text,
+                        font: {
+                            family: "'Outfit', sans-serif",
+                            size: 10,
+                            weight: '500'
+                        },
+                        padding: 8
+                    }
+                }
+            }
+        };
+    }
+
     createTimeSeriesChart(chartData, workplaceName) {
         const ctx = document.getElementById('timeSeriesChart').getContext('2d');
+        const colors = this.getChartColors();
+        const baseOptions = this.getChartOptions();
 
         if (this.charts.timeSeries) {
             this.charts.timeSeries.destroy();
         }
 
+        // 데이터셋 스타일 커스터마이징
+        const styledDatasets = [
+            {
+                ...chartData.datasets[0],
+                label: '신규입사자',
+                borderColor: colors.green,
+                backgroundColor: colors.green + '20',
+                pointBackgroundColor: colors.green,
+                pointBorderColor: colors.bg,
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                borderWidth: 2.5,
+                tension: 0.4,
+                fill: true,
+                yAxisID: 'y'
+            },
+            {
+                ...chartData.datasets[1],
+                label: '퇴사자',
+                borderColor: colors.red,
+                backgroundColor: colors.red + '20',
+                pointBackgroundColor: colors.red,
+                pointBorderColor: colors.bg,
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                borderWidth: 2.5,
+                tension: 0.4,
+                fill: true,
+                yAxisID: 'y'
+            },
+            {
+                ...chartData.datasets[2],
+                label: '총 인원',
+                borderColor: colors.lime,
+                backgroundColor: 'transparent',
+                pointBackgroundColor: colors.lime,
+                pointBorderColor: colors.bg,
+                pointBorderWidth: 2,
+                pointRadius: 5,
+                pointHoverRadius: 8,
+                borderWidth: 3,
+                tension: 0.4,
+                fill: false,
+                yAxisID: 'y1'
+            }
+        ];
+
         this.charts.timeSeries = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: chartData.labels,
-                datasets: [
-                    chartData.datasets[0], // 신규입사자
-                    chartData.datasets[1], // 퇴사자
-                    chartData.datasets[2]  // 총 인원
-                ]
+                datasets: styledDatasets
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: `${workplaceName} - 시간별 인원 변화`,
-                        font: {
-                            size: 16
-                        }
-                    },
-                    legend: {
-                        position: 'top',
-                    }
-                },
-                interaction: {
-                    mode: 'index',
-                    intersect: false,
-                },
+                ...baseOptions,
                 scales: {
                     x: {
-                        display: true,
-                        title: {
-                            display: true,
-                            text: '기간'
-                        }
+                        ...baseOptions.scales.x
                     },
                     y: {
+                        ...baseOptions.scales.y,
                         type: 'linear',
-                        display: true,
                         position: 'left',
                         title: {
                             display: true,
-                            text: '입사자/퇴사자 (명)'
+                            text: '입사/퇴사 (명)',
+                            color: colors.text,
+                            font: {
+                                family: "'Outfit', sans-serif",
+                                size: 10,
+                                weight: '600'
+                            }
                         }
                     },
                     y1: {
                         type: 'linear',
-                        display: true,
                         position: 'right',
-                        title: {
-                            display: true,
-                            text: '총 인원 (명)'
-                        },
                         grid: {
                             drawOnChartArea: false,
+                            drawBorder: false
                         },
+                        ticks: {
+                            color: colors.lime,
+                            font: {
+                                family: "'Outfit', sans-serif",
+                                size: 10,
+                                weight: '600'
+                            },
+                            padding: 8
+                        },
+                        title: {
+                            display: true,
+                            text: '총 인원 (명)',
+                            color: colors.lime,
+                            font: {
+                                family: "'Outfit', sans-serif",
+                                size: 10,
+                                weight: '600'
+                            }
+                        }
                     }
                 }
             }
@@ -453,6 +694,8 @@ class PensionVisualization {
 
     createSalaryChart(chartData, workplaceName) {
         const ctx = document.getElementById('salaryChart').getContext('2d');
+        const colors = this.getChartColors();
+        const baseOptions = this.getChartOptions();
 
         if (this.charts.salary) {
             this.charts.salary.destroy();
@@ -469,70 +712,86 @@ class PensionVisualization {
                     {
                         label: '월급여추정 (만원)',
                         data: salaryData.monthly,
-                        borderColor: 'rgb(255, 206, 86)',
-                        backgroundColor: 'rgba(255, 206, 86, 0.2)',
-                        tension: 0.1,
-                        yAxisID: 'y',
-                        fill: false
+                        borderColor: colors.cyan,
+                        backgroundColor: colors.cyan + '20',
+                        pointBackgroundColor: colors.cyan,
+                        pointBorderColor: colors.bg,
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 2.5,
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y'
                     },
                     {
                         label: '연간급여추정 (만원)',
                         data: salaryData.yearly,
-                        borderColor: 'rgb(153, 102, 255)',
-                        backgroundColor: 'rgba(153, 102, 255, 0.2)',
-                        tension: 0.1,
-                        yAxisID: 'y1',
-                        fill: false
+                        borderColor: colors.magenta,
+                        backgroundColor: 'transparent',
+                        pointBackgroundColor: colors.magenta,
+                        pointBorderColor: colors.bg,
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 2.5,
+                        tension: 0.4,
+                        fill: false,
+                        yAxisID: 'y1'
                     }
                 ]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: `${workplaceName} - 급여 추정`,
-                        font: {
-                            size: 16
-                        }
-                    },
-                    legend: {
-                        position: 'top',
-                    }
-                },
-                interaction: {
-                    mode: 'index',
-                    intersect: false,
-                },
+                ...baseOptions,
                 scales: {
                     x: {
-                        display: true,
-                        title: {
-                            display: true,
-                            text: '기간'
-                        }
+                        ...baseOptions.scales.x
                     },
                     y: {
+                        ...baseOptions.scales.y,
                         type: 'linear',
-                        display: true,
                         position: 'left',
                         title: {
                             display: true,
-                            text: '월급여추정 (만원)'
+                            text: '월급여 (만원)',
+                            color: colors.cyan,
+                            font: {
+                                family: "'Outfit', sans-serif",
+                                size: 10,
+                                weight: '600'
+                            }
+                        },
+                        ticks: {
+                            ...baseOptions.scales.y.ticks,
+                            color: colors.cyan
                         }
                     },
                     y1: {
                         type: 'linear',
-                        display: true,
                         position: 'right',
-                        title: {
-                            display: true,
-                            text: '연간급여추정 (만원)'
-                        },
                         grid: {
                             drawOnChartArea: false,
+                            drawBorder: false
                         },
+                        ticks: {
+                            color: colors.magenta,
+                            font: {
+                                family: "'Outfit', sans-serif",
+                                size: 10,
+                                weight: '600'
+                            },
+                            padding: 8
+                        },
+                        title: {
+                            display: true,
+                            text: '연간급여 (만원)',
+                            color: colors.magenta,
+                            font: {
+                                family: "'Outfit', sans-serif",
+                                size: 10,
+                                weight: '600'
+                            }
+                        }
                     }
                 }
             }
@@ -620,6 +879,8 @@ class PensionVisualization {
 
     createMonthlyChart(chartData, workplaceName) {
         const ctx = document.getElementById('monthlyChart').getContext('2d');
+        const colors = this.getChartColors();
+        const baseOptions = this.getChartOptions();
 
         if (this.charts.monthly) {
             this.charts.monthly.destroy();
@@ -636,23 +897,33 @@ class PensionVisualization {
                 {
                     label: '신규입사자',
                     data: chartData.datasets[0].data,
-                    backgroundColor: 'rgba(75, 192, 192, 0.6)',
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 1
+                    backgroundColor: colors.green + '80',
+                    borderColor: colors.green,
+                    borderWidth: 0,
+                    borderRadius: 4,
+                    borderSkipped: false
                 },
                 {
                     label: '퇴사자',
                     data: chartData.datasets[1].data,
-                    backgroundColor: 'rgba(255, 99, 132, 0.6)',
-                    borderColor: 'rgba(255, 99, 132, 1)',
-                    borderWidth: 1
+                    backgroundColor: colors.red + '80',
+                    borderColor: colors.red,
+                    borderWidth: 0,
+                    borderRadius: 4,
+                    borderSkipped: false
                 },
                 {
                     label: '순 변화',
                     data: netChangeData,
-                    backgroundColor: 'rgba(255, 206, 86, 0.6)',
-                    borderColor: 'rgba(255, 206, 86, 1)',
-                    borderWidth: 1
+                    backgroundColor: netChangeData.map(val => 
+                        val >= 0 ? colors.lime + '90' : colors.magenta + '90'
+                    ),
+                    borderColor: netChangeData.map(val => 
+                        val >= 0 ? colors.lime : colors.magenta
+                    ),
+                    borderWidth: 0,
+                    borderRadius: 4,
+                    borderSkipped: false
                 }
             ]
         };
@@ -661,42 +932,37 @@ class PensionVisualization {
             type: 'bar',
             data: monthlyChartData,
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: `${workplaceName} - 월별 인원 변화`,
-                        font: {
-                            size: 16
-                        }
-                    },
-                    legend: {
-                        position: 'top',
-                    }
-                },
+                ...baseOptions,
                 scales: {
                     x: {
-                        display: true,
-                        title: {
-                            display: true,
-                            text: '기간'
-                        }
+                        ...baseOptions.scales.x,
+                        stacked: false
                     },
                     y: {
-                        display: true,
+                        ...baseOptions.scales.y,
+                        stacked: false,
                         title: {
                             display: true,
-                            text: '인원수 (명)'
+                            text: '인원수 (명)',
+                            color: colors.text,
+                            font: {
+                                family: "'Outfit', sans-serif",
+                                size: 10,
+                                weight: '600'
+                            }
                         }
                     }
-                }
+                },
+                barPercentage: 0.7,
+                categoryPercentage: 0.8
             }
         });
     }
 
     createComparisonChart(comparisonData) {
         const ctx = document.getElementById('timeSeriesChart').getContext('2d');
+        const colors = this.getChartColors();
+        const baseOptions = this.getChartOptions();
 
         if (this.charts.timeSeries) {
             this.charts.timeSeries.destroy();
@@ -707,23 +973,29 @@ class PensionVisualization {
             {
                 label: '현재 총 인원',
                 data: comparisonData.map(item => item.currentTotal),
-                backgroundColor: 'rgba(54, 162, 235, 0.6)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1
+                backgroundColor: colors.lime + '80',
+                borderColor: colors.lime,
+                borderWidth: 0,
+                borderRadius: 6,
+                borderSkipped: false
             },
             {
                 label: '총 신규입사자',
                 data: comparisonData.map(item => item.totalNewHires),
-                backgroundColor: 'rgba(75, 192, 192, 0.6)',
-                borderColor: 'rgba(75, 192, 192, 1)',
-                borderWidth: 1
+                backgroundColor: colors.green + '80',
+                borderColor: colors.green,
+                borderWidth: 0,
+                borderRadius: 6,
+                borderSkipped: false
             },
             {
                 label: '총 퇴사자',
                 data: comparisonData.map(item => item.totalResignations),
-                backgroundColor: 'rgba(255, 99, 132, 0.6)',
-                borderColor: 'rgba(255, 99, 132, 1)',
-                borderWidth: 1
+                backgroundColor: colors.red + '80',
+                borderColor: colors.red,
+                borderWidth: 0,
+                borderRadius: 6,
+                borderSkipped: false
             }
         ];
 
@@ -731,36 +1003,27 @@ class PensionVisualization {
             type: 'bar',
             data: { labels, datasets },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: '사업장별 인원 비교',
-                        font: {
-                            size: 16
-                        }
-                    },
-                    legend: {
-                        position: 'top',
-                    }
-                },
+                ...baseOptions,
                 scales: {
                     x: {
-                        display: true,
-                        title: {
-                            display: true,
-                            text: '사업장'
-                        }
+                        ...baseOptions.scales.x
                     },
                     y: {
-                        display: true,
+                        ...baseOptions.scales.y,
                         title: {
                             display: true,
-                            text: '인원수 (명)'
+                            text: '인원수 (명)',
+                            color: colors.text,
+                            font: {
+                                family: "'Outfit', sans-serif",
+                                size: 10,
+                                weight: '600'
+                            }
                         }
                     }
-                }
+                },
+                barPercentage: 0.7,
+                categoryPercentage: 0.85
             }
         });
 
@@ -1156,32 +1419,23 @@ class PensionVisualization {
             }
         });
 
-        // 차트 데이터 구성
+        // 차트 데이터 구성 (테마 색상은 차트 생성 시 적용됨)
         const chartData = {
             labels: allLabels,
             datasets: [
                 {
                     label: '신규입사자',
                     data: combinedNewHires,
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    tension: 0.1,
                     yAxisID: 'y'
                 },
                 {
                     label: '퇴사자',
                     data: combinedResignations,
-                    borderColor: 'rgba(255, 99, 132, 1)',
-                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    tension: 0.1,
                     yAxisID: 'y'
                 },
                 {
                     label: '총 인원',
                     data: combinedTotals,
-                    borderColor: 'rgba(54, 162, 235, 1)',
-                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                    tension: 0.1,
                     yAxisID: 'y1',
                     fill: false
                 }
@@ -1230,6 +1484,8 @@ class PensionVisualization {
     // 합산된 급여 차트 생성
     createCombinedSalaryChart(chartData, salaryData, title) {
         const ctx = document.getElementById('salaryChart').getContext('2d');
+        const colors = this.getChartColors();
+        const baseOptions = this.getChartOptions();
 
         if (this.charts.salary) {
             this.charts.salary.destroy();
@@ -1243,70 +1499,86 @@ class PensionVisualization {
                     {
                         label: '월급여추정 합계 (만원)',
                         data: salaryData,
-                        borderColor: 'rgb(255, 206, 86)',
-                        backgroundColor: 'rgba(255, 206, 86, 0.2)',
-                        tension: 0.1,
-                        yAxisID: 'y',
-                        fill: false
+                        borderColor: colors.cyan,
+                        backgroundColor: colors.cyan + '20',
+                        pointBackgroundColor: colors.cyan,
+                        pointBorderColor: colors.bg,
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 2.5,
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y'
                     },
                     {
                         label: '연간급여추정 합계 (만원)',
                         data: salaryData.map(val => val * 12),
-                        borderColor: 'rgb(153, 102, 255)',
-                        backgroundColor: 'rgba(153, 102, 255, 0.2)',
-                        tension: 0.1,
-                        yAxisID: 'y1',
-                        fill: false
+                        borderColor: colors.magenta,
+                        backgroundColor: 'transparent',
+                        pointBackgroundColor: colors.magenta,
+                        pointBorderColor: colors.bg,
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 2.5,
+                        tension: 0.4,
+                        fill: false,
+                        yAxisID: 'y1'
                     }
                 ]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: `${title} - 급여 추정 합계`,
-                        font: {
-                            size: 16
-                        }
-                    },
-                    legend: {
-                        position: 'top',
-                    }
-                },
-                interaction: {
-                    mode: 'index',
-                    intersect: false,
-                },
+                ...baseOptions,
                 scales: {
                     x: {
-                        display: true,
-                        title: {
-                            display: true,
-                            text: '기간'
-                        }
+                        ...baseOptions.scales.x
                     },
                     y: {
+                        ...baseOptions.scales.y,
                         type: 'linear',
-                        display: true,
                         position: 'left',
                         title: {
                             display: true,
-                            text: '월급여추정 합계 (만원)'
+                            text: '월급여 합계 (만원)',
+                            color: colors.cyan,
+                            font: {
+                                family: "'Outfit', sans-serif",
+                                size: 10,
+                                weight: '600'
+                            }
+                        },
+                        ticks: {
+                            ...baseOptions.scales.y.ticks,
+                            color: colors.cyan
                         }
                     },
                     y1: {
                         type: 'linear',
-                        display: true,
                         position: 'right',
-                        title: {
-                            display: true,
-                            text: '연간급여추정 합계 (만원)'
-                        },
                         grid: {
                             drawOnChartArea: false,
+                            drawBorder: false
                         },
+                        ticks: {
+                            color: colors.magenta,
+                            font: {
+                                family: "'Outfit', sans-serif",
+                                size: 10,
+                                weight: '600'
+                            },
+                            padding: 8
+                        },
+                        title: {
+                            display: true,
+                            text: '연간급여 합계 (만원)',
+                            color: colors.magenta,
+                            font: {
+                                family: "'Outfit', sans-serif",
+                                size: 10,
+                                weight: '600'
+                            }
+                        }
                     }
                 }
             }
@@ -1314,91 +1586,11 @@ class PensionVisualization {
     }
 }
 
-// CSS 스타일 추가
+// Lando Norris 스타일 동적 CSS
 const style = document.createElement('style');
 style.textContent = `
-    .text-success {
-        color: #28a745 !important;
-    }
-
-    .text-danger {
-        color: #dc3545 !important;
-    }
-
-    /* 사업장 탭 체크박스 스타일 */
-    .business-checkbox {
-        margin-right: 12px;
-        display: flex;
-        align-items: center;
-    }
-
-    .business-checkbox input[type="checkbox"] {
-        width: 18px;
-        height: 18px;
-        margin: 0;
-        cursor: pointer;
-        accent-color: #007aff;
-    }
-
-    .business-tab {
-        display: flex;
-        align-items: center;
-        padding: 12px 16px;
-        border: 1px solid #d1d1d6;
-        border-radius: 8px;
-        background: #ffffff;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        margin-bottom: 8px;
-        user-select: none;
-    }
-
-    .business-tab:hover {
-        background: #f5f5f7;
-        border-color: #007aff;
-    }
-
-    .business-tab.active {
-        background: #007aff;
-        color: white;
-        border-color: #007aff;
-    }
-
-    .business-tab.active .business-checkbox input[type="checkbox"] {
-        accent-color: white;
-    }
-
-    .combined-tab {
-        background: linear-gradient(135deg, #34c759 0%, #30d158 100%);
-        color: white;
-        border-color: #34c759;
-        font-weight: 600;
-    }
-
-    .combined-tab:hover {
-        background: linear-gradient(135deg, #30d158 0%, #32d74b 100%);
-    }
-
-    .combined-tab.active {
-        background: linear-gradient(135deg, #28cd41 0%, #30d158 100%);
-        box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3);
-    }
-
-    .business-name {
-        font-weight: 600;
-        font-size: 14px;
-        flex-grow: 1;
-    }
-
-    .business-reg-no {
-        font-size: 12px;
-        opacity: 0.7;
-        margin-left: 8px;
-    }
-
-    .business-tab.active .business-reg-no {
-        opacity: 0.9;
-    }
+    .text-success { color: #00ff88 !important; }
+    .text-danger { color: #ff4757 !important; }
 `;
 document.head.appendChild(style);
 

@@ -97,7 +97,8 @@ class DataCollector {
         this.timeoutMs = 60000; // 60초로 증가
 
         if (!this.apiKey) {
-            throw new Error('API_KEY가 설정되지 않았습니다. .env 파일을 확인해주세요.');
+            console.warn('⚠️ API_KEY가 설정되지 않았습니다. 로컬 데이터만 사용 가능합니다.');
+            this.apiKey = 'LOCAL_MODE';
         }
     }
 
