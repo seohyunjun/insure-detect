@@ -94,6 +94,50 @@ class PensionVisualization {
         this.init();
     }
 
+    // 사업자등록번호에서 사업자 유형 판별
+    getBizType(bizNo) {
+        if (!bizNo || bizNo.length < 6) return '기타 / 미분류';
+        
+        // 사업자등록번호에서 숫자만 추출 후 5-6번째 자릿수 (0-indexed: 4-5)
+        const cleanBizNo = bizNo.replace(/[^0-9]/g, '');
+        if (cleanBizNo.length < 6) return '기타 / 미분류';
+        
+        const typeCode = cleanBizNo.substring(4, 6);
+        const typeNum = parseInt(typeCode, 10);
+        
+        if (typeNum >= 1 && typeNum <= 79) {
+            return '개인 과세사업자(일반·간이)';
+        } else if (typeNum >= 90 && typeNum <= 99) {
+            return '개인 면세사업자';
+        } else if (typeCode === '89') {
+            return '개인으로 보는 단체(종교단체)';
+        } else if (['81', '86', '87'].includes(typeCode)) {
+            return '법인(영리) 본점';
+        } else if (typeCode === '82') {
+            return '법인(비영리) 본점 및 지점';
+        } else if (typeCode === '83') {
+            return '국가·지방자치단체';
+        } else if (typeCode === '84') {
+            return '외국법인 본점 및 지점';
+        } else if (typeCode === '85') {
+            return '법인(영리) 지점';
+        } else {
+            return '기타 / 미분류';
+        }
+    }
+
+    // 사업자 유형에 따른 배지 클래스 반환
+    getBizTypeBadgeClass(bizType) {
+        if (bizType.includes('법인(영리)')) return 'biz-type-corp';
+        if (bizType.includes('법인(비영리)')) return 'biz-type-nonprofit';
+        if (bizType.includes('개인 과세')) return 'biz-type-individual';
+        if (bizType.includes('개인 면세')) return 'biz-type-taxfree';
+        if (bizType.includes('국가')) return 'biz-type-gov';
+        if (bizType.includes('외국법인')) return 'biz-type-foreign';
+        if (bizType.includes('종교단체')) return 'biz-type-religious';
+        return 'biz-type-other';
+    }
+
     async init() {
         this.bindEvents();
         await this.loadAvailablePeriods();
@@ -319,6 +363,9 @@ class PensionVisualization {
             tab.className = 'business-tab';
             if (index === 0) tab.classList.add('active');
 
+            const bizType = this.getBizType(business.사업자등록번호);
+            const bizTypeClass = this.getBizTypeBadgeClass(bizType);
+
             tab.innerHTML = `
                 <label class="business-checkbox">
                     <input type="checkbox" ${this.selectedBusinesses.has(index) ? 'checked' : ''}
@@ -326,6 +373,7 @@ class PensionVisualization {
                 </label>
                 <span class="business-name">${business.사업장명}</span>
                 <span class="business-reg-no">${business.사업자등록번호}</span>
+                <span class="biz-type-badge ${bizTypeClass}">${bizType}</span>
             `;
 
             tab.addEventListener('click', (e) => {
@@ -1038,8 +1086,25 @@ class PensionVisualization {
         const tbody = document.getElementById('dataTableBody');
         tbody.innerHTML = '';
 
+        // 테이블 헤더 업데이트 (사업자유형 컬럼 포함)
+        const thead = document.querySelector('#dataTable thead tr');
+        thead.innerHTML = `
+            <th>기간</th>
+            <th>사업장명</th>
+            <th>사업자등록번호</th>
+            <th>사업자유형</th>
+            <th>신규입사자</th>
+            <th>퇴사자</th>
+            <th>총 인원</th>
+            <th>순 변화</th>
+            <th>월국민연금금액</th>
+            <th>개인납부금액</th>
+            <th>월급여추정</th>
+            <th>연간급여추정</th>
+        `;
+
         if (!monthlyData || monthlyData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" class="no-data">데이터가 없습니다</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" class="no-data">데이터가 없습니다</td></tr>';
             return;
         }
 
@@ -1048,11 +1113,15 @@ class PensionVisualization {
 
             const netChangeClass = item.netChange >= 0 ? 'text-success' : 'text-danger';
             const netChangeSymbol = item.netChange >= 0 ? '+' : '';
+            
+            const bizType = this.getBizType(item.사업자등록번호);
+            const bizTypeClass = this.getBizTypeBadgeClass(bizType);
 
             row.innerHTML = `
                 <td>${item.month}</td>
                 <td>${item.사업장명 || '-'}</td>
                 <td>${item.사업자등록번호 || '-'}</td>
+                <td><span class="biz-type-badge ${bizTypeClass}">${bizType}</span></td>
                 <td>${item.newHires.toLocaleString()}명</td>
                 <td>${item.resignations.toLocaleString()}명</td>
                 <td>${item.total.toLocaleString()}명</td>
@@ -1071,11 +1140,12 @@ class PensionVisualization {
         const tbody = document.getElementById('dataTableBody');
         tbody.innerHTML = '';
 
-        // 테이블 헤더 변경
+        // 테이블 헤더 변경 (사업자유형 포함)
         const thead = document.querySelector('#dataTable thead tr');
         thead.innerHTML = `
             <th>사업장명</th>
             <th>사업자등록번호</th>
+            <th>사업자유형</th>
             <th>총 신규입사자</th>
             <th>총 퇴사자</th>
             <th>현재 총 인원</th>
@@ -1087,10 +1157,14 @@ class PensionVisualization {
 
             const avgChangeClass = item.averageMonthlyChange >= 0 ? 'text-success' : 'text-danger';
             const avgChangeSymbol = item.averageMonthlyChange >= 0 ? '+' : '';
+            
+            const bizType = this.getBizType(item.사업자등록번호);
+            const bizTypeClass = this.getBizTypeBadgeClass(bizType);
 
             row.innerHTML = `
                 <td>${item.name}</td>
                 <td>${item.사업자등록번호 || '-'}</td>
+                <td><span class="biz-type-badge ${bizTypeClass}">${bizType}</span></td>
                 <td>${item.totalNewHires.toLocaleString()}명</td>
                 <td>${item.totalResignations.toLocaleString()}명</td>
                 <td>${item.currentTotal.toLocaleString()}명</td>
