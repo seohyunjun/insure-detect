@@ -3,210 +3,242 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>국민연금 사업장 가입현황</title>
+    <title>Pension Insight | 국민연금 사업장 분석</title>
+    
+    <!-- Google Fonts - Outfit (Lando Norris 스타일 폰트) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- Pretendard for Korean -->
+    <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" rel="stylesheet">
+    
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    
     <link rel="stylesheet" href="css/style.css">
+    
+    <!-- 깜빡임 방지를 위한 초기 테마 적용 -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('pension-insight-theme');
+            const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
+        })();
+    </script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>국민연금 사업장 가입현황</h1>
-            <p>사업장별 시계열 데이터 분석</p>
+    <!-- 배경 효과 -->
+    <div class="bg-effects">
+        <div class="gradient-blob blob-1"></div>
+        <div class="gradient-blob blob-2"></div>
+        <div class="noise-overlay"></div>
+    </div>
+
+    <div class="app-wrapper">
+        <!-- 네비게이션 -->
+        <nav class="nav-bar">
+            <div class="nav-logo">
+                <span class="logo-icon">◆</span>
+                <span class="logo-text">PENSION<span class="accent">INSIGHT</span></span>
+            </div>
+            <div class="nav-actions">
+                <div class="nav-status">
+                    <span class="status-dot"></span>
+                    <span>LIVE DATA</span>
+                </div>
+                <button class="theme-toggle" id="themeToggle" aria-label="테마 변경">
+                    <span class="theme-icon moon">🌙</span>
+                    <span class="theme-icon sun">☀️</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- 히어로 섹션 -->
+        <header class="hero-section">
+            <div class="hero-content">
+                <p class="hero-subtitle">National Pension Data Intelligence</p>
+                <h1 class="hero-title">
+                    <span class="title-line">사업장</span>
+                    <span class="title-line accent-text">가입현황</span>
+                    <span class="title-line">분석</span>
+                </h1>
+                <p class="hero-desc">실시간 국민연금 데이터로 기업의 인력 흐름을 파악하세요</p>
+            </div>
         </header>
 
-        <main>
-            <!-- 검색 및 필터 섹션 -->
+        <main class="main-content">
+            <!-- 검색 섹션 -->
             <section class="search-section" role="search" aria-label="사업장 데이터 검색">
-                <div class="search-container">
-                    <!-- 입력 필드 섹션 -->
-                    <div class="input-fields-section">
-                        <h2 class="section-title">검색 조건</h2>
-
-                        <div class="form-row">
-                            <div class="input-group">
-                                <label for="workplaceName" class="input-label">
-                                    사업장명 또는 사업자등록번호
-                                    <span class="required-indicator" aria-label="필수 입력">*</span>
-                                </label>
+                <div class="section-header">
+                    <span class="section-number">01</span>
+                    <h2 class="section-title">검색</h2>
+                </div>
+                
+                <div class="search-card">
+                    <div class="search-grid">
+                        <!-- 사업장 검색 -->
+                        <div class="input-group full-width">
+                            <label for="workplaceName" class="input-label">
+                                사업장명 또는 사업자등록번호
+                                <span class="required">*</span>
+                            </label>
+                            <div class="input-wrapper">
                                 <input
                                     type="text"
                                     id="workplaceName"
-                                    class="form-input"
-                                    placeholder="예: 삼성전자, LG전자, 1234567890"
-                                    aria-describedby="workplace-help"
+                                    class="input-field"
+                                    placeholder="삼성전자, LG전자, 1234567890..."
                                     required
                                 />
-                                <small id="workplace-help" class="help-text">
-                                    사업장명 또는 사업자등록번호로 검색할 수 있습니다
-                                </small>
-
-                                <!-- 사업장명 제안 버튼들 -->
-                                <div class="workplace-suggestions" id="workplaceSuggestions">
-                                    <div class="suggestions-label">
-                                        <span>인기 사업장:</span>
-                                    </div>
-                                    <div class="suggestions-buttons" id="suggestionsButtons">
-                                        <!-- 버튼들이 JavaScript로 동적으로 추가됩니다 -->
-                                    </div>
+                            </div>
+                            
+                            <!-- 인기 사업장 -->
+                            <div class="workplace-suggestions" id="workplaceSuggestions">
+                                <div class="suggestions-label">
+                                    <span>인기 사업장:</span>
+                                </div>
+                                <div class="suggestions-buttons" id="suggestionsButtons">
                                 </div>
                             </div>
                         </div>
 
-                        <div class="form-row date-row">
-                            <div class="input-group">
-                                <label for="startDate" class="input-label">시작 기간</label>
-                                <select
-                                    id="startDate"
-                                    class="form-select"
-                                    aria-describedby="date-help"
-                                >
-                                    <option value="">시작 기간 선택</option>
-                                </select>
-                            </div>
-
-                            <div class="date-separator" aria-hidden="true">~</div>
-
-                            <div class="input-group">
-                                <label for="endDate" class="input-label">종료 기간</label>
-                                <select
-                                    id="endDate"
-                                    class="form-select"
-                                    aria-describedby="date-help"
-                                >
-                                    <option value="">종료 기간 선택</option>
-                                </select>
-                            </div>
+                        <!-- 기간 선택 -->
+                        <div class="input-group">
+                            <label for="startDate" class="input-label">시작 기간</label>
+                            <select id="startDate" class="select-field">
+                                <option value="">시작 기간 선택</option>
+                            </select>
                         </div>
 
-                        <small id="date-help" class="help-text">
-                            분석할 기간을 선택하세요. 단일 월 선택도 가능합니다
-                        </small>
+                        <div class="input-group">
+                            <label for="endDate" class="input-label">종료 기간</label>
+                            <select id="endDate" class="select-field">
+                                <option value="">종료 기간 선택</option>
+                            </select>
+                        </div>
                     </div>
 
-                    <!-- 빠른 선택 섹션 -->
-                    <div class="quick-select-section">
-                        <fieldset class="quick-select-fieldset">
-                            <legend class="quick-select-legend">빠른 기간 선택</legend>
-                            <div class="quick-select-options">
-                                <label class="quick-option">
-                                    <input type="radio" name="quickPeriod" value="latest" class="quick-radio">
-                                    <span class="quick-label">최신 데이터</span>
-                                    <small class="quick-desc">가장 최근 월</small>
-                                </label>
-                                <label class="quick-option">
-                                    <input type="radio" name="quickPeriod" value="recent" class="quick-radio">
-                                    <span class="quick-label">최근 3개월</span>
-                                    <small class="quick-desc">3개월 트렌드</small>
-                                </label>
-                                <label class="quick-option">
-                                    <input type="radio" name="quickPeriod" value="all" class="quick-radio">
-                                    <span class="quick-label">전체 기간</span>
-                                    <small class="quick-desc">모든 데이터</small>
-                                </label>
-                            </div>
-                        </fieldset>
+                    <!-- 빠른 선택 -->
+                    <div class="quick-select">
+                        <span class="quick-label">빠른 선택</span>
+                        <div class="quick-options">
+                            <label class="quick-option">
+                                <input type="radio" name="quickPeriod" value="latest" class="quick-radio">
+                                <span class="quick-btn">최신</span>
+                            </label>
+                            <label class="quick-option">
+                                <input type="radio" name="quickPeriod" value="recent" class="quick-radio">
+                                <span class="quick-btn">3개월</span>
+                            </label>
+                            <label class="quick-option">
+                                <input type="radio" name="quickPeriod" value="all" class="quick-radio">
+                                <span class="quick-btn">전체</span>
+                            </label>
+                        </div>
                     </div>
 
-                    <!-- 액션 버튼 섹션 -->
-                    <div class="action-buttons-section">
-                        <button
-                            id="searchBtn"
-                            class="btn btn-primary"
-                            type="button"
-                            aria-describedby="search-help"
-                        >
-                            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-                            </svg>
-                            데이터 조회
+                    <!-- 버튼 -->
+                    <div class="action-buttons">
+                        <button id="searchBtn" class="btn btn-primary" type="button">
+                            <span>데이터 조회</span>
+                            <span class="btn-arrow">→</span>
                         </button>
-
-                        <button
-                            id="compareBtn"
-                            class="btn btn-secondary"
-                            type="button"
-                            aria-describedby="compare-help"
-                        >
-                            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path d="M9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4zm2 2H5V5h14v14zm0-16H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
-                            </svg>
-                            사업장 비교
+                        <button id="compareBtn" class="btn btn-outline" type="button">
+                            <span>사업장 비교</span>
                         </button>
+                    </div>
+                </div>
+            </section>
 
-                        <div class="button-help-texts">
-                            <small id="search-help" class="help-text">
-                                선택한 조건으로 데이터를 조회합니다
-                            </small>
-                            <small id="compare-help" class="help-text">
-                                여러 사업장을 동시에 비교 분석합니다
-                            </small>
+            <!-- 로딩 -->
+            <div id="loadingIndicator" class="loading-section hidden">
+                <div class="loading-content">
+                    <div class="loading-spinner"></div>
+                    <span>데이터 분석 중...</span>
+                </div>
+            </div>
+
+            <!-- 에러 메시지 -->
+            <div id="errorMessage" class="error-message hidden"></div>
+
+            <!-- 데이터 요약 -->
+            <section id="dataInfo" class="stats-section hidden">
+                <div class="section-header">
+                    <span class="section-number">02</span>
+                    <h2 class="section-title">분석 결과</h2>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon green">+</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalNewHires">-</span>
+                            <span class="stat-label">총 신규입사자</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon red">-</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalResignations">-</span>
+                            <span class="stat-label">총 퇴사자</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon blue">●</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="currentTotal">-</span>
+                            <span class="stat-label">현재 총 인원</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon lime">↗</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="averageChange">-</span>
+                            <span class="stat-label">월평균 변화</span>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- 로딩 및 상태 표시 -->
-            <section class="status-section">
-                <div id="loadingIndicator" class="loading hidden">
-                    <div class="spinner"></div>
-                    <span>데이터를 불러오는 중...</span>
+            <!-- 사업장 탭 -->
+            <div id="businessTabs" class="business-tabs hidden">
+                <div class="tabs-header">
+                    <h3>검색된 사업장</h3>
+                    <div class="tabs-nav" id="tabsNav"></div>
                 </div>
-
-                <div id="errorMessage" class="error-message hidden"></div>
-
-                <div id="dataInfo" class="data-info hidden">
-                    <h3>📈 데이터 요약</h3>
-                    <div class="summary-grid">
-                        <div class="summary-item">
-                            <span class="label">총 신규입사자:</span>
-                            <span id="totalNewHires" class="value">-</span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="label">총 퇴사자:</span>
-                            <span id="totalResignations" class="value">-</span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="label">현재 총 인원:</span>
-                            <span id="currentTotal" class="value">-</span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="label">월평균 변화:</span>
-                            <span id="averageChange" class="value">-</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
+            </div>
 
             <!-- 차트 섹션 -->
-            <section class="chart-section">
-                <!-- 사업장 탭 섹션 -->
-                <div id="businessTabs" class="business-tabs hidden">
-                    <div class="tabs-header">
-                        <h3>검색된 사업장</h3>
-                        <div class="tabs-nav" id="tabsNav">
-                            <!-- 탭들이 동적으로 생성됩니다 -->
-                        </div>
-                    </div>
+            <section class="charts-section" id="chartsContainer">
+                <div class="section-header">
+                    <span class="section-number">03</span>
+                    <h2 class="section-title">시각화</h2>
                 </div>
-
-                <!-- 차트 컨테이너들 -->
-                <div id="chartsContainer">
-                    <div class="chart-container">
-                        <h3>시계열 차트 - 인원 변화</h3>
+                
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3>인원 변화 추이</h3>
+                        </div>
                         <div class="chart-wrapper">
                             <canvas id="timeSeriesChart"></canvas>
                         </div>
                     </div>
 
-                    <div class="chart-container">
-                        <h3>급여 추정 차트</h3>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3>급여 추정</h3>
+                        </div>
                         <div class="chart-wrapper">
                             <canvas id="salaryChart"></canvas>
                         </div>
                     </div>
 
-                    <div class="chart-container">
-                        <h3>월별 변화 차트</h3>
+                    <div class="chart-card full-width">
+                        <div class="chart-header">
+                            <h3>월별 변화</h3>
+                        </div>
                         <div class="chart-wrapper">
                             <canvas id="monthlyChart"></canvas>
                         </div>
@@ -214,38 +246,53 @@
                 </div>
             </section>
 
-            <!-- 데이터 테이블 섹션 -->
+            <!-- 테이블 섹션 -->
             <section class="table-section">
-                <h3>📋 상세 데이터</h3>
-                <div class="table-wrapper">
-                    <table id="dataTable">
-                        <thead>
-                            <tr>
-                                <th>기간</th>
-                                <th>사업장명</th>
-                                <th>사업자등록번호</th>
-                                <th>신규입사자</th>
-                                <th>퇴사자</th>
-                                <th>총 인원</th>
-                                <th>순 변화</th>
-                                <th>월국민연금금액</th>
-                                <th>개인납부금액</th>
-                                <th>월급여추정</th>
-                                <th>연간급여추정</th>
-                            </tr>
-                        </thead>
-                        <tbody id="dataTableBody">
-                            <tr>
-                                <td colspan="11" class="no-data">데이터를 조회해주세요</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div class="section-header">
+                    <span class="section-number">04</span>
+                    <h2 class="section-title">상세 데이터</h2>
+                </div>
+                
+                <div class="table-card">
+                    <div class="table-wrapper">
+                        <table id="dataTable">
+                            <thead>
+                                <tr>
+                                    <th>기간</th>
+                                    <th>사업장명</th>
+                                    <th>사업자등록번호</th>
+                                    <th>신규입사자</th>
+                                    <th>퇴사자</th>
+                                    <th>총 인원</th>
+                                    <th>순 변화</th>
+                                    <th>월국민연금금액</th>
+                                    <th>개인납부금액</th>
+                                    <th>월급여추정</th>
+                                    <th>연간급여추정</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dataTableBody">
+                                <tr>
+                                    <td colspan="11" class="no-data">
+                                        <div class="empty-state">
+                                            <span class="empty-icon">◇</span>
+                                            <span>사업장을 검색해주세요</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
         </main>
 
-        <footer>
-            <p>데이터 출처: 공공데이터포털 - 국민연금공단 사업장가입현황정보</p>
+        <!-- 푸터 -->
+        <footer class="app-footer">
+            <div class="footer-content">
+                <p class="footer-source">데이터 출처: 공공데이터포털 - 국민연금공단</p>
+                <p class="footer-brand">PENSION<span class="accent">INSIGHT</span> © 2025</p>
+            </div>
         </footer>
     </div>
 
