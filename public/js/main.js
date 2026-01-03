@@ -79,6 +79,11 @@ class ThemeManager {
                 window.app.createMonthlyChart(window.app.currentData.chartData, '');
             }
         }
+
+        // 지도 타일 업데이트
+        if (window.app && window.app.updateMapTiles) {
+            window.app.updateMapTiles();
+        }
     }
 }
 
@@ -91,6 +96,11 @@ class PensionVisualization {
         this.currentData = null;
         this.currentBusinesses = null;
         this.currentBusinessIndex = 0;
+        // 지도 관련 속성
+        this.map = null;
+        this.markers = [];
+        this.markerLayer = null;
+        this.workplaceLocations = [];
         this.init();
     }
 
@@ -175,7 +185,13 @@ class PensionVisualization {
             this.adjustEndDate(e.target.value);
         });
 
-
+        // 지도 새로고침 버튼
+        const refreshMapBtn = document.getElementById('refreshMapBtn');
+        if (refreshMapBtn) {
+            refreshMapBtn.addEventListener('click', () => {
+                this.loadWorkplaceLocations();
+            });
+        }
     }
 
     setDefaultDates() {
@@ -319,6 +335,9 @@ class PensionVisualization {
         // 데이터 요약 표시 (전체 통합)
         this.displayMultipleBusinessSummary(businesses);
 
+        // 지도에 사업장 위치 표시
+        this.loadWorkplaceLocations();
+
         console.log('여러 사업장 검색 결과:', businesses.length + '개');
     }
 
@@ -330,7 +349,7 @@ class PensionVisualization {
         // 탭 숨기기
         this.hideBusinessTabs();
 
-        // 데이터 표시 (기존 방식과 동일)
+        // 데이터 표시 (기존 방식과 동일, 지도 로드 포함)
         this.displayData(business, searchTerm);
     }
 
@@ -475,6 +494,345 @@ class PensionVisualization {
         this.createMonthlyChart(data.chartData, workplaceName);
         this.updateTable(data.summary.monthlyData);
         this.showDataInfo();
+        
+        // 지도에 사업장 위치 표시
+        this.loadWorkplaceLocations();
+    }
+
+    // ========================================
+    // 지도 관련 메서드
+    // ========================================
+
+    // 지도 초기화
+    initMap() {
+        if (this.map) {
+            return; // 이미 초기화됨
+        }
+
+        const mapContainer = document.getElementById('workplaceMap');
+        if (!mapContainer) {
+            console.error('지도 컨테이너를 찾을 수 없습니다.');
+            return;
+        }
+
+        // 대한민국 중심 좌표
+        const koreaCenter = [36.5, 127.5];
+        
+        // Leaflet 지도 초기화
+        this.map = L.map('workplaceMap', {
+            center: koreaCenter,
+            zoom: 7,
+            zoomControl: true,
+            scrollWheelZoom: true
+        });
+
+        // VWorld 타일 레이어 추가 (또는 OSM 사용)
+        // 다크모드에 어울리는 타일 사용
+        const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+        
+        if (isDark) {
+            // 다크 테마용 타일 (CartoDB Dark Matter)
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(this.map);
+        } else {
+            // 라이트 테마용 타일
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(this.map);
+        }
+
+        // 마커 레이어 그룹 생성
+        this.markerLayer = L.layerGroup().addTo(this.map);
+
+        console.log('🗺️ 지도 초기화 완료');
+    }
+
+    // 지도 타일 업데이트 (테마 변경 시)
+    updateMapTiles() {
+        if (!this.map) return;
+
+        const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+        
+        // 기존 타일 레이어 제거
+        this.map.eachLayer(layer => {
+            if (layer instanceof L.TileLayer) {
+                this.map.removeLayer(layer);
+            }
+        });
+
+        // 새 타일 레이어 추가 (맨 아래에 배치)
+        let tileLayer;
+        if (isDark) {
+            tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OSM &copy; CARTO',
+                subdomains: 'abcd',
+                maxZoom: 19
+            });
+        } else {
+            tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OSM &copy; CARTO',
+                subdomains: 'abcd',
+                maxZoom: 19
+            });
+        }
+        
+        // 타일 레이어를 맨 아래에 추가
+        tileLayer.addTo(this.map);
+        tileLayer.bringToBack();
+        
+        // 마커 레이어를 맨 위로 올리기
+        if (this.markerLayer) {
+            this.markerLayer.bringToFront();
+        }
+
+        console.log(`🗺️ 지도 타일 업데이트: ${isDark ? 'dark' : 'light'} 모드`);
+    }
+
+    // 사업장 위치 로드
+    async loadWorkplaceLocations() {
+        const workplaceName = document.getElementById('workplaceName').value.trim();
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+
+        if (!workplaceName) {
+            return;
+        }
+
+        this.showMapLoading();
+        this.showMapSection();
+
+        try {
+            const response = await fetch('/api/workplace-location', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    workplaceName,
+                    startDate: startDate || '2025-11',
+                    endDate: endDate || '2025-11'
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.data && result.data.length > 0) {
+                this.workplaceLocations = result.data;
+                this.displayWorkplacesOnMap(result.data);
+                this.hideMapError();
+            } else {
+                this.showMapError(result.error || '사업장 위치 정보를 찾을 수 없습니다.');
+                this.workplaceLocations = [];
+            }
+        } catch (error) {
+            console.error('사업장 위치 로드 오류:', error);
+            this.showMapError('사업장 위치 정보를 불러오는 중 오류가 발생했습니다.');
+        } finally {
+            this.hideMapLoading();
+        }
+    }
+
+    // 지도에 사업장 표시
+    displayWorkplacesOnMap(workplaces) {
+        // 지도 초기화 (필요시)
+        this.initMap();
+
+        // 기존 마커 제거
+        if (this.markerLayer) {
+            this.markerLayer.clearLayers();
+        }
+        this.markers = [];
+
+        // 유효한 좌표가 있는 사업장만 필터링
+        const validWorkplaces = workplaces.filter(w => w.lat && w.lng);
+        
+        if (validWorkplaces.length === 0) {
+            this.showMapError('좌표 정보가 있는 사업장이 없습니다. VWorld API 키를 확인해주세요.');
+            this.updateMapLegend(workplaces);
+            return;
+        }
+
+        // 마커 추가
+        const bounds = L.latLngBounds();
+        const colors = this.getChartColors();
+
+        validWorkplaces.forEach((workplace, index) => {
+            const latLng = [workplace.lat, workplace.lng];
+            bounds.extend(latLng);
+
+            // 커스텀 마커 아이콘
+            const markerIcon = L.divIcon({
+                className: 'custom-marker-icon',
+                html: `<div class="custom-marker" style="background: ${colors.lime};"></div>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+                popupAnchor: [0, -12]
+            });
+
+            // 마커 생성
+            const marker = L.marker(latLng, { icon: markerIcon });
+            
+            // 팝업 내용
+            const popupContent = this.createPopupContent(workplace);
+            marker.bindPopup(popupContent, {
+                maxWidth: 300,
+                className: 'custom-popup'
+            });
+
+            // 마커 이벤트
+            marker.on('click', () => {
+                this.highlightLegendItem(index);
+            });
+
+            marker.on('mouseover', () => {
+                marker.openPopup();
+            });
+
+            // 마커 저장 및 레이어에 추가
+            this.markers.push({ marker, workplace, index });
+            this.markerLayer.addLayer(marker);
+        });
+
+        // 지도 범위 조정
+        if (validWorkplaces.length === 1) {
+            this.map.setView([validWorkplaces[0].lat, validWorkplaces[0].lng], 15);
+        } else {
+            this.map.fitBounds(bounds, { padding: [50, 50] });
+        }
+
+        // 범례 업데이트
+        this.updateMapLegend(workplaces);
+
+        console.log(`🗺️ 지도에 ${validWorkplaces.length}개 사업장 표시 완료`);
+    }
+
+    // 팝업 내용 생성
+    createPopupContent(workplace) {
+        const bizType = this.getBizType(workplace.regNo);
+        const address = workplace.roadAddress || workplace.parcelAddress || '주소 정보 없음';
+        
+        return `
+            <div class="map-popup">
+                <div class="map-popup-title">${workplace.name}</div>
+                <div class="map-popup-info">
+                    <p><strong>사업자등록번호:</strong> ${workplace.regNo || '-'}</p>
+                    <p><strong>업종:</strong> ${workplace.industry || '-'}</p>
+                    <p><strong>유형:</strong> ${bizType}</p>
+                    <p><strong>가입자수:</strong> ${workplace.memberCount?.toLocaleString() || 0}명</p>
+                    <p><strong>주소:</strong> ${address}</p>
+                </div>
+            </div>
+        `;
+    }
+
+    // 지도 범례 업데이트
+    updateMapLegend(workplaces) {
+        const legendContent = document.getElementById('mapLegendContent');
+        if (!legendContent) return;
+
+        if (!workplaces || workplaces.length === 0) {
+            legendContent.innerHTML = '<p class="legend-empty">사업장을 검색하면 위치가 표시됩니다.</p>';
+            return;
+        }
+
+        legendContent.innerHTML = workplaces.map((workplace, index) => {
+            const hasLocation = workplace.lat && workplace.lng;
+            const address = workplace.roadAddress || workplace.parcelAddress || '주소 정보 없음';
+            
+            return `
+                <div class="legend-item" data-index="${index}" onclick="app.focusWorkplace(${index})">
+                    <div class="legend-marker ${hasLocation ? '' : 'error'}"></div>
+                    <div class="legend-info">
+                        <div class="legend-name" title="${workplace.name}">${workplace.name}</div>
+                        <div class="legend-address" title="${address}">${address}</div>
+                        <div class="legend-members">👥 ${workplace.memberCount?.toLocaleString() || 0}명</div>
+                        ${workplace.geocodeError ? `<div class="legend-error" style="color: var(--red); font-size: 0.7rem;">⚠️ ${workplace.geocodeError}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 범례 아이템 강조
+    highlightLegendItem(index) {
+        const legendItems = document.querySelectorAll('.legend-item');
+        legendItems.forEach((item, i) => {
+            item.classList.toggle('active', i === index);
+        });
+    }
+
+    // 특정 사업장 포커스
+    focusWorkplace(index) {
+        const workplaceData = this.workplaceLocations[index];
+        if (!workplaceData) return;
+
+        // 범례 강조
+        this.highlightLegendItem(index);
+
+        // 좌표가 있으면 지도 이동
+        if (workplaceData.lat && workplaceData.lng) {
+            this.map.setView([workplaceData.lat, workplaceData.lng], 16);
+            
+            // 해당 마커 팝업 열기
+            const markerData = this.markers.find(m => m.index === index);
+            if (markerData) {
+                markerData.marker.openPopup();
+            }
+        }
+    }
+
+    // 지도 섹션 표시
+    showMapSection() {
+        const mapSection = document.getElementById('mapSection');
+        if (mapSection) {
+            mapSection.classList.remove('hidden');
+        }
+    }
+
+    // 지도 섹션 숨기기
+    hideMapSection() {
+        const mapSection = document.getElementById('mapSection');
+        if (mapSection) {
+            mapSection.classList.add('hidden');
+        }
+    }
+
+    // 지도 로딩 표시
+    showMapLoading() {
+        const loading = document.getElementById('mapLoadingIndicator');
+        if (loading) {
+            loading.classList.remove('hidden');
+        }
+    }
+
+    // 지도 로딩 숨기기
+    hideMapLoading() {
+        const loading = document.getElementById('mapLoadingIndicator');
+        if (loading) {
+            loading.classList.add('hidden');
+        }
+    }
+
+    // 지도 에러 표시
+    showMapError(message) {
+        const errorEl = document.getElementById('mapErrorMessage');
+        if (errorEl) {
+            errorEl.textContent = message;
+            errorEl.classList.remove('hidden');
+        }
+    }
+
+    // 지도 에러 숨기기
+    hideMapError() {
+        const errorEl = document.getElementById('mapErrorMessage');
+        if (errorEl) {
+            errorEl.classList.add('hidden');
+        }
     }
 
     displayComparisonData(data, workplaceNames) {

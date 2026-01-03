@@ -1272,3 +1272,367 @@ tbody tr:hover {
     font-size: 0.65rem;
     padding: 3px 8px;
 }
+
+/* ========================================
+   지도 섹션 스타일
+   ======================================== */
+.map-section {
+    animation: fade-up 0.8s var(--ease-out) 0.25s both;
+}
+
+.map-card {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: var(--space-md);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: var(--space-lg);
+    overflow: hidden;
+    transition: var(--transition-fast);
+}
+
+.map-card:hover {
+    border-color: var(--border-hover);
+}
+
+[data-theme="light"] .map-card {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .map-card:hover {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.map-container {
+    width: 100%;
+    height: 450px;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+}
+
+/* Leaflet 다크모드 스타일 오버라이드 */
+.leaflet-container {
+    background: var(--bg-input) !important;
+    font-family: var(--font-body) !important;
+}
+
+.leaflet-popup-content-wrapper {
+    background: var(--bg-card) !important;
+    color: var(--text-white) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+.leaflet-popup-tip {
+    background: var(--bg-card) !important;
+}
+
+.leaflet-popup-content {
+    margin: var(--space-md) !important;
+    line-height: 1.5 !important;
+}
+
+[data-theme="light"] .leaflet-popup-content-wrapper {
+    background: #ffffff !important;
+    color: #333333 !important;
+    border: 1px solid #e0e0e0 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] .leaflet-popup-tip {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .map-popup-title {
+    color: var(--lime) !important;
+    border-bottom-color: #e0e0e0 !important;
+}
+
+[data-theme="light"] .map-popup-info strong {
+    color: #333333 !important;
+}
+
+.leaflet-control-zoom {
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+.leaflet-control-zoom a {
+    background: var(--bg-card) !important;
+    color: var(--text-white) !important;
+    border: 1px solid var(--border-color) !important;
+    transition: var(--transition-fast) !important;
+}
+
+.leaflet-control-zoom a:hover {
+    background: var(--bg-card-hover) !important;
+    color: var(--lime) !important;
+}
+
+[data-theme="light"] .leaflet-control-zoom a {
+    background: #ffffff !important;
+    color: #333333 !important;
+    border: 1px solid #ddd !important;
+}
+
+[data-theme="light"] .leaflet-control-zoom a:hover {
+    background: #f4f4f4 !important;
+    color: var(--lime) !important;
+}
+
+.leaflet-control-attribution {
+    background: rgba(0, 0, 0, 0.6) !important;
+    color: var(--text-dark) !important;
+    font-size: 10px !important;
+}
+
+[data-theme="light"] .leaflet-control-attribution {
+    background: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* 지도 팝업 스타일 */
+.map-popup {
+    min-width: 200px;
+}
+
+.map-popup-title {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--lime);
+    margin-bottom: var(--space-sm);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.map-popup-info {
+    font-size: 0.8rem;
+    color: var(--text-gray);
+}
+
+.map-popup-info p {
+    margin: var(--space-xs) 0;
+}
+
+.map-popup-info strong {
+    color: var(--text-white);
+}
+
+/* 지도 범례 */
+.map-legend {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-input);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+}
+
+.legend-header {
+    padding: var(--space-md) var(--space-lg);
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.legend-title {
+    font-family: var(--font-display);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-gray);
+}
+
+.legend-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-sm);
+    max-height: 390px;
+}
+
+.legend-empty {
+    text-align: center;
+    color: var(--text-dark);
+    font-size: 0.85rem;
+    padding: var(--space-xl);
+}
+
+.legend-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    margin-bottom: var(--space-xs);
+}
+
+.legend-item:hover {
+    background: var(--bg-card-hover);
+}
+
+.legend-item.active {
+    background: var(--lime-dim);
+    border: 1px solid var(--lime);
+}
+
+.legend-marker {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--lime);
+    flex-shrink: 0;
+    margin-top: 4px;
+    box-shadow: 0 0 8px var(--lime);
+}
+
+.legend-marker.error {
+    background: var(--red);
+    box-shadow: 0 0 8px var(--red);
+}
+
+.legend-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.legend-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-white);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.legend-address {
+    font-size: 0.75rem;
+    color: var(--text-gray);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+
+.legend-members {
+    font-size: 0.7rem;
+    color: var(--cyan);
+    margin-top: 2px;
+}
+
+/* 지도 로딩/에러 */
+.map-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+    padding: var(--space-lg);
+    background: var(--lime-dim);
+    border-radius: var(--radius-md);
+    margin-top: var(--space-md);
+    color: var(--lime);
+    font-size: 0.9rem;
+}
+
+.map-error {
+    padding: var(--space-md) var(--space-lg);
+    background: rgba(255, 71, 87, 0.1);
+    border: 1px solid rgba(255, 71, 87, 0.3);
+    border-radius: var(--radius-md);
+    color: var(--red);
+    font-size: 0.85rem;
+    margin-top: var(--space-md);
+}
+
+/* 작은 버튼 스타일 */
+.btn-sm {
+    padding: var(--space-sm) var(--space-md);
+    font-size: 0.75rem;
+    margin-left: auto;
+}
+
+/* 섹션 헤더 - 버튼 포함 시 정렬 */
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: var(--space-xl);
+}
+
+/* 반응형 지도 */
+@media (max-width: 1024px) {
+    .map-card {
+        grid-template-columns: 1fr;
+    }
+    
+    .map-legend {
+        order: 2;
+        max-height: 250px;
+    }
+    
+    .legend-content {
+        max-height: 200px;
+    }
+    
+    .map-container {
+        height: 350px;
+    }
+}
+
+@media (max-width: 768px) {
+    .map-container {
+        height: 300px;
+    }
+    
+    .map-legend {
+        max-height: 200px;
+    }
+    
+    .legend-content {
+        max-height: 150px;
+    }
+}
+
+/* 커스텀 마커 스타일 */
+.custom-marker {
+    background: var(--lime);
+    border: 3px solid var(--bg-black);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    box-shadow: 0 0 12px var(--lime), 0 2px 8px rgba(0, 0, 0, 0.4);
+    transition: all 0.2s ease;
+}
+
+.custom-marker:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 20px var(--lime), 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.custom-marker.selected {
+    background: var(--cyan);
+    box-shadow: 0 0 20px var(--cyan), 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] .custom-marker {
+    border: 3px solid #ffffff;
+    box-shadow: 0 0 8px var(--lime), 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="light"] .custom-marker:hover {
+    box-shadow: 0 0 16px var(--lime), 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* Leaflet 다크 타일 필터 (선택적) */
+.leaflet-tile-container img {
+    filter: brightness(0.85) contrast(1.1) saturate(0.9);
+}
+
+[data-theme="light"] .leaflet-tile-container img {
+    filter: none;
+}
