@@ -923,6 +923,167 @@ app.post('/api/workplace-location', async (req, res) => {
     }
 });
 
+// 🔍 자동완성 API 엔드포인트 (실제 데이터 + 검색 로그 기반 인기순)
+app.get('/api/autocomplete', async (req, res) => {
+    try {
+        const { q: query, limit = 5 } = req.query;
+
+        if (!query || query.trim().length < 1) {
+            return res.json({
+                success: true,
+                data: []
+            });
+        }
+
+        const searchTerm = query.trim();
+        console.log(`🔍 자동완성 요청: "${query}"`);
+
+        // 1. 검색 로그에서 사업장명 빈도 계산
+        const recentSearches = recentSearchService.getRecentSearches(100);
+        const workplaceFrequency = {};
+
+        recentSearches.forEach(search => {
+            if (search.parameters && search.parameters.workplaceName) {
+                const name = search.parameters.workplaceName;
+                workplaceFrequency[name] = (workplaceFrequency[name] || 0) + 1;
+            }
+        });
+
+        // 2. 실제 데이터베이스에서 사업장 검색 (DuckDB 사용)
+        let dbSuggestions = [];
+        try {
+            // 최신 데이터에서 사업장명 검색 (DISTINCT + LIMIT으로 빠르게)
+            const escapedSearchTerm = searchTerm.replace(/'/g, "''");
+            
+            // 사용 가능한 parquet 파일 찾기
+            const fs = require('fs').promises;
+            const sourceDir = path.join(__dirname, '../source/data');
+            const files = await fs.readdir(sourceDir);
+            
+            // 최신 parquet 파일 찾기 (pension_YYYY-MM_YYYY-MM.parquet 패턴)
+            const parquetFiles = files
+                .filter(file => file.endsWith('.parquet') && file.startsWith('pension_'))
+                .map(file => {
+                    // pension_YYYY-MM_YYYY-MM.parquet 패턴에서 두 번째 날짜 추출
+                    const match = file.match(/pension_\d{4}-\d{2}_(\d{4}-\d{2})\.parquet$/);
+                    return {
+                        name: file,
+                        path: path.join(sourceDir, file),
+                        monthYear: match ? match[1] : ''
+                    };
+                })
+                .filter(f => f.monthYear) // 유효한 패턴만
+                .sort((a, b) => b.monthYear.localeCompare(a.monthYear))
+                .slice(0, 3); // 최신 3개 파일만 사용
+
+            if (parquetFiles.length > 0) {
+                const filePatterns = parquetFiles.map(f => `'${f.path}'`).join(', ');
+                
+                // 사업장명 또는 사업자등록번호로 검색
+                let whereCondition;
+                if (/^\d+$/.test(searchTerm)) {
+                    // 숫자만 있으면 사업자등록번호로 검색
+                    whereCondition = `사업자등록번호 LIKE '%${escapedSearchTerm}%'`;
+                } else {
+                    whereCondition = `사업장명 LIKE '%${escapedSearchTerm}%'`;
+                }
+
+                const sql = `
+                    SELECT 사업장명, COUNT(*) as cnt
+                    FROM read_parquet([${filePatterns}])
+                    WHERE ${whereCondition}
+                    GROUP BY 사업장명
+                    ORDER BY cnt DESC
+                    LIMIT 20
+                `;
+
+                const { execSync } = require('child_process');
+                const tempDir = path.join(__dirname, '../temp');
+                const tempSQLFile = path.join(tempDir, `autocomplete_${Date.now()}.sql`);
+                
+                await fs.writeFile(tempSQLFile, sql);
+                
+                const result = execSync(`duckdb -csv < "${tempSQLFile}"`, {
+                    encoding: 'utf8',
+                    maxBuffer: 10 * 1024 * 1024
+                });
+                
+                await fs.unlink(tempSQLFile).catch(() => {});
+
+                // CSV 파싱
+                if (result.trim()) {
+                    const lines = result.trim().split('\n');
+                    if (lines.length > 1) {
+                        dbSuggestions = lines.slice(1).map(line => {
+                            const parts = line.split(',');
+                            return {
+                                name: parts[0]?.replace(/"/g, '') || '',
+                                dbCount: parseInt(parts[1]) || 0
+                            };
+                        }).filter(item => item.name);
+                    }
+                }
+                
+                console.log(`📊 DB에서 ${dbSuggestions.length}개 사업장 발견`);
+            }
+        } catch (dbError) {
+            console.warn(`⚠️ DB 검색 실패 (폴백 사용): ${dbError.message}`);
+        }
+
+        // 3. 검색 로그 빈도와 DB 결과 결합
+        const combinedResults = new Map();
+
+        // DB 결과 추가 (기본 점수 부여)
+        dbSuggestions.forEach((item, index) => {
+            const logFreq = workplaceFrequency[item.name] || 0;
+            // DB에서 발견됨 = 기본 1점, 로그 빈도 추가, 순서에 따른 보너스
+            const score = 1 + logFreq + (0.5 - index * 0.02);
+            combinedResults.set(item.name, {
+                name: item.name,
+                score: score,
+                isPopular: logFreq >= 2,
+                fromDB: true
+            });
+        });
+
+        // 검색 로그에서 일치하는 결과 추가 (DB에 없는 경우)
+        Object.entries(workplaceFrequency).forEach(([name, freq]) => {
+            if (name.toLowerCase().includes(searchTerm.toLowerCase()) && !combinedResults.has(name)) {
+                combinedResults.set(name, {
+                    name: name,
+                    score: freq,
+                    isPopular: freq >= 2,
+                    fromDB: false
+                });
+            }
+        });
+
+        // 점수순 정렬 및 상위 N개 추출
+        const suggestions = Array.from(combinedResults.values())
+            .sort((a, b) => b.score - a.score)
+            .slice(0, parseInt(limit))
+            .map(item => ({
+                name: item.name,
+                frequency: Math.round(item.score),
+                isPopular: item.isPopular
+            }));
+
+        console.log(`✅ 자동완성 결과: ${suggestions.length}개 (검색어: "${query}")`);
+
+        res.json({
+            success: true,
+            data: suggestions
+        });
+
+    } catch (error) {
+        console.error('자동완성 API 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: '서버 내부 오류가 발생했습니다.'
+        });
+    }
+});
+
 // 🏢 사업장명 제안 API 엔드포인트
 app.get('/api/workplace-suggestions', async (req, res) => {
     try {
