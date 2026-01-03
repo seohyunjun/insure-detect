@@ -90,6 +90,227 @@ class ThemeManager {
 // 테마 매니저 인스턴스 생성 (즉시 실행)
 const themeManager = new ThemeManager();
 
+// ========================================
+// 유틸리티 함수
+// ========================================
+
+// 디바운스 함수
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// ========================================
+// 자동완성 클래스
+// ========================================
+class AutocompleteManager {
+    constructor(inputElement, dropdownElement) {
+        this.input = inputElement;
+        this.dropdown = dropdownElement;
+        this.selectedIndex = -1;
+        this.suggestions = [];
+        this.isOpen = false;
+
+        this.init();
+    }
+
+    init() {
+        // 디바운스된 검색 함수 (300ms)
+        this.debouncedSearch = debounce(this.fetchSuggestions.bind(this), 300);
+
+        // 이벤트 바인딩
+        this.bindEvents();
+    }
+
+    bindEvents() {
+        // 입력 이벤트
+        this.input.addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+            
+            if (query.length > 0) {
+                this.debouncedSearch(query);
+            } else {
+                this.hide();
+            }
+        });
+
+        // 키보드 탐색
+        this.input.addEventListener('keydown', (e) => {
+            if (!this.isOpen) return;
+
+            switch (e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    this.moveSelection(1);
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    this.moveSelection(-1);
+                    break;
+                case 'Enter':
+                    if (this.selectedIndex >= 0) {
+                        e.preventDefault();
+                        this.selectItem(this.selectedIndex);
+                    }
+                    break;
+                case 'Escape':
+                    this.hide();
+                    break;
+                case 'Tab':
+                    this.hide();
+                    break;
+            }
+        });
+
+        // 포커스 이벤트
+        this.input.addEventListener('focus', () => {
+            const query = this.input.value.trim();
+            if (query.length > 0 && this.suggestions.length > 0) {
+                this.show();
+            }
+        });
+
+        // 외부 클릭 시 드롭다운 닫기
+        document.addEventListener('click', (e) => {
+            if (!this.input.contains(e.target) && !this.dropdown.contains(e.target)) {
+                this.hide();
+            }
+        });
+    }
+
+    async fetchSuggestions(query) {
+        try {
+            const response = await fetch(`/api/autocomplete?q=${encodeURIComponent(query)}&limit=5`);
+            const result = await response.json();
+
+            if (result.success && result.data.length > 0) {
+                this.suggestions = result.data;
+                this.render(query);
+                this.show();
+            } else {
+                this.suggestions = [];
+                this.hide();
+            }
+        } catch (error) {
+            console.error('자동완성 API 호출 오류:', error);
+            this.hide();
+        }
+    }
+
+    render(query) {
+        const queryLower = query.toLowerCase();
+        
+        let html = this.suggestions.map((item, index) => {
+            const name = item.name;
+            const nameLower = name.toLowerCase();
+            const matchIndex = nameLower.indexOf(queryLower);
+            
+            // 검색어 하이라이트
+            let highlightedName;
+            if (matchIndex >= 0) {
+                const before = name.substring(0, matchIndex);
+                const match = name.substring(matchIndex, matchIndex + query.length);
+                const after = name.substring(matchIndex + query.length);
+                highlightedName = `${before}<span class="highlight">${match}</span>${after}`;
+            } else {
+                highlightedName = name;
+            }
+
+            // 인기 배지 (빈도 2 이상)
+            const badge = item.isPopular 
+                ? `<span class="autocomplete-item-badge">🔥 인기</span>`
+                : '';
+
+            return `
+                <div class="autocomplete-item" data-index="${index}" data-name="${name}">
+                    <span class="autocomplete-item-name">
+                        <span class="autocomplete-item-icon">🏢</span>
+                        ${highlightedName}
+                    </span>
+                    ${badge}
+                </div>
+            `;
+        }).join('');
+
+        // 키보드 단축키 힌트
+        html += `
+            <div class="autocomplete-hint">
+                <span><kbd>↑</kbd> <kbd>↓</kbd> 탐색</span>
+                <span><kbd>Enter</kbd> 선택</span>
+                <span><kbd>Esc</kbd> 닫기</span>
+            </div>
+        `;
+
+        this.dropdown.innerHTML = html;
+        this.selectedIndex = -1;
+
+        // 마우스 이벤트 바인딩
+        this.dropdown.querySelectorAll('.autocomplete-item').forEach((item, index) => {
+            item.addEventListener('click', () => {
+                this.selectItem(index);
+            });
+
+            item.addEventListener('mouseenter', () => {
+                this.updateSelection(index);
+            });
+        });
+    }
+
+    moveSelection(direction) {
+        const maxIndex = this.suggestions.length - 1;
+        let newIndex = this.selectedIndex + direction;
+
+        if (newIndex < 0) {
+            newIndex = maxIndex;
+        } else if (newIndex > maxIndex) {
+            newIndex = 0;
+        }
+
+        this.updateSelection(newIndex);
+    }
+
+    updateSelection(index) {
+        // 이전 선택 해제
+        this.dropdown.querySelectorAll('.autocomplete-item').forEach((item, i) => {
+            item.classList.toggle('active', i === index);
+        });
+
+        this.selectedIndex = index;
+    }
+
+    selectItem(index) {
+        if (index >= 0 && index < this.suggestions.length) {
+            const selectedName = this.suggestions[index].name;
+            this.input.value = selectedName;
+            this.hide();
+            
+            // 선택 후 입력 필드에 포커스 유지
+            this.input.focus();
+            
+            // 입력 이벤트 발생 (다른 로직이 반응할 수 있도록)
+            this.input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+
+    show() {
+        this.dropdown.classList.remove('hidden');
+        this.isOpen = true;
+    }
+
+    hide() {
+        this.dropdown.classList.add('hidden');
+        this.isOpen = false;
+        this.selectedIndex = -1;
+    }
+}
+
 class PensionVisualization {
     constructor() {
         this.charts = {};
@@ -153,6 +374,18 @@ class PensionVisualization {
         await this.loadAvailablePeriods();
         this.setDefaultDates();
         await this.loadWorkplaceSuggestions();
+        this.initAutocomplete();
+    }
+
+    // 자동완성 초기화
+    initAutocomplete() {
+        const input = document.getElementById('workplaceName');
+        const dropdown = document.getElementById('autocompleteDropdown');
+        
+        if (input && dropdown) {
+            this.autocomplete = new AutocompleteManager(input, dropdown);
+            console.log('✅ 자동완성 기능 초기화 완료');
+        }
     }
 
     bindEvents() {

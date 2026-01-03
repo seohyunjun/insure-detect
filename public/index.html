@@ -87,14 +87,20 @@
                                 사업장명 또는 사업자등록번호
                                 <span class="required">*</span>
                             </label>
-                            <div class="input-wrapper">
-                                <input
-                                    type="text"
-                                    id="workplaceName"
-                                    class="input-field"
-                                    placeholder="삼성전자, LG전자, 1234567890..."
-                                    required
-                                />
+                            <div class="autocomplete-container">
+                                <div class="input-wrapper">
+                                    <input
+                                        type="text"
+                                        id="workplaceName"
+                                        class="input-field"
+                                        placeholder="삼성전자, LG전자, 1234567890..."
+                                        required
+                                        autocomplete="off"
+                                    />
+                                </div>
+                                <div id="autocompleteDropdown" class="autocomplete-dropdown hidden">
+                                    <!-- 자동완성 결과가 여기에 동적으로 추가됩니다 -->
+                                </div>
                             </div>
                             
                             <!-- 인기 사업장 -->
@@ -250,40 +256,10 @@
                 </div>
             </section>
 
-            <!-- 지도 섹션 -->
-            <section id="mapSection" class="map-section hidden">
-                <div class="section-header">
-                    <span class="section-number">04</span>
-                    <h2 class="section-title">사업장 위치</h2>
-                    <button id="refreshMapBtn" class="btn btn-sm btn-outline" type="button">
-                        <span>🗺️ 위치 새로고침</span>
-                    </button>
-                </div>
-                
-                <div class="map-card">
-                    <div id="workplaceMap" class="map-container"></div>
-                    <div class="map-legend" id="mapLegend">
-                        <div class="legend-header">
-                            <span class="legend-title">📍 사업장 목록</span>
-                        </div>
-                        <div class="legend-content" id="mapLegendContent">
-                            <p class="legend-empty">사업장을 검색하면 위치가 표시됩니다.</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div id="mapLoadingIndicator" class="map-loading hidden">
-                    <div class="loading-spinner"></div>
-                    <span>위치 정보 조회 중...</span>
-                </div>
-                
-                <div id="mapErrorMessage" class="map-error hidden"></div>
-            </section>
-
             <!-- 테이블 섹션 -->
             <section class="table-section">
                 <div class="section-header">
-                    <span class="section-number">05</span>
+                    <span class="section-number">04</span>
                     <h2 class="section-title">상세 데이터</h2>
                 </div>
                 
@@ -319,6 +295,36 @@
                         </table>
                     </div>
                 </div>
+            </section>
+
+            <!-- 지도 섹션 -->
+            <section id="mapSection" class="map-section hidden">
+                <div class="section-header">
+                    <span class="section-number">05</span>
+                    <h2 class="section-title">사업장 위치</h2>
+                    <button id="refreshMapBtn" class="btn btn-sm btn-outline" type="button">
+                        <span>🗺️ 위치 새로고침</span>
+                    </button>
+                </div>
+                
+                <div class="map-card">
+                    <div id="workplaceMap" class="map-container"></div>
+                    <div class="map-legend" id="mapLegend">
+                        <div class="legend-header">
+                            <span class="legend-title">📍 사업장 목록</span>
+                        </div>
+                        <div class="legend-content" id="mapLegendContent">
+                            <p class="legend-empty">사업장을 검색하면 위치가 표시됩니다.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="mapLoadingIndicator" class="map-loading hidden">
+                    <div class="loading-spinner"></div>
+                    <span>위치 정보 조회 중...</span>
+                </div>
+                
+                <div id="mapErrorMessage" class="map-error hidden"></div>
             </section>
         </main>
 
