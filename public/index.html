@@ -16,6 +16,10 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     
+    <!-- Leaflet 지도 라이브러리 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
     <link rel="stylesheet" href="css/style.css">
     
     <!-- 깜빡임 방지를 위한 초기 테마 적용 -->
@@ -246,10 +250,40 @@
                 </div>
             </section>
 
+            <!-- 지도 섹션 -->
+            <section id="mapSection" class="map-section hidden">
+                <div class="section-header">
+                    <span class="section-number">04</span>
+                    <h2 class="section-title">사업장 위치</h2>
+                    <button id="refreshMapBtn" class="btn btn-sm btn-outline" type="button">
+                        <span>🗺️ 위치 새로고침</span>
+                    </button>
+                </div>
+                
+                <div class="map-card">
+                    <div id="workplaceMap" class="map-container"></div>
+                    <div class="map-legend" id="mapLegend">
+                        <div class="legend-header">
+                            <span class="legend-title">📍 사업장 목록</span>
+                        </div>
+                        <div class="legend-content" id="mapLegendContent">
+                            <p class="legend-empty">사업장을 검색하면 위치가 표시됩니다.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="mapLoadingIndicator" class="map-loading hidden">
+                    <div class="loading-spinner"></div>
+                    <span>위치 정보 조회 중...</span>
+                </div>
+                
+                <div id="mapErrorMessage" class="map-error hidden"></div>
+            </section>
+
             <!-- 테이블 섹션 -->
             <section class="table-section">
                 <div class="section-header">
-                    <span class="section-number">04</span>
+                    <span class="section-number">05</span>
                     <h2 class="section-title">상세 데이터</h2>
                 </div>
                 

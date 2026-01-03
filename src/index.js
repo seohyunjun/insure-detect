@@ -663,6 +663,266 @@ app.delete('/api/recent-searches', async (req, res) => {
     }
 });
 
+// 🗺️ VWorld 지오코딩 API 프록시 엔드포인트
+app.get('/api/geocode', async (req, res) => {
+    try {
+        const { address } = req.query;
+
+        if (!address || address.trim().length < 2) {
+            return res.status(400).json({
+                success: false,
+                error: '주소를 2글자 이상 입력해주세요.'
+            });
+        }
+
+        const vworldApiKey = process.env.VWORLD_API_KEY;
+        if (!vworldApiKey || vworldApiKey === 'your_vworld_api_key_here') {
+            return res.status(500).json({
+                success: false,
+                error: 'VWorld API 키가 설정되지 않았습니다. .env 파일에서 VWORLD_API_KEY를 설정해주세요.'
+            });
+        }
+
+        console.log(`🗺️ 지오코딩 요청: ${address}`);
+
+        const axios = require('axios');
+        
+        // VWorld Geocoder API 호출 (도로명주소 검색)
+        const encodedAddress = encodeURIComponent(address.trim());
+        const apiUrl = `https://api.vworld.kr/req/address?service=address&request=getcoord&version=2.0&crs=epsg:4326&address=${encodedAddress}&format=json&type=road&key=${vworldApiKey}`;
+
+        const response = await axios.get(apiUrl, {
+            timeout: 10000,
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        const result = response.data;
+
+        if (result.response && result.response.status === 'OK' && result.response.result) {
+            const point = result.response.result.point;
+            
+            console.log(`✅ 지오코딩 성공: ${address} → (${point.y}, ${point.x})`);
+            
+            res.json({
+                success: true,
+                data: {
+                    address: address,
+                    lat: parseFloat(point.y),
+                    lng: parseFloat(point.x),
+                    fullAddress: result.response.refined?.text || address
+                }
+            });
+        } else {
+            // 도로명주소로 검색 실패시 지번주소로 재시도
+            const parcelApiUrl = `https://api.vworld.kr/req/address?service=address&request=getcoord&version=2.0&crs=epsg:4326&address=${encodedAddress}&format=json&type=parcel&key=${vworldApiKey}`;
+            
+            const parcelResponse = await axios.get(parcelApiUrl, {
+                timeout: 10000,
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+
+            const parcelResult = parcelResponse.data;
+
+            if (parcelResult.response && parcelResult.response.status === 'OK' && parcelResult.response.result) {
+                const point = parcelResult.response.result.point;
+                
+                console.log(`✅ 지오코딩 성공 (지번): ${address} → (${point.y}, ${point.x})`);
+                
+                res.json({
+                    success: true,
+                    data: {
+                        address: address,
+                        lat: parseFloat(point.y),
+                        lng: parseFloat(point.x),
+                        fullAddress: parcelResult.response.refined?.text || address
+                    }
+                });
+            } else {
+                console.log(`⚠️ 지오코딩 실패: ${address} - 주소를 찾을 수 없음`);
+                res.json({
+                    success: false,
+                    error: '해당 주소의 좌표를 찾을 수 없습니다.'
+                });
+            }
+        }
+    } catch (error) {
+        console.error('지오코딩 API 오류:', error.message);
+        res.status(500).json({
+            success: false,
+            error: '지오코딩 중 오류가 발생했습니다.'
+        });
+    }
+});
+
+// 🗺️ 사업장 위치 조회 API (주소로 좌표 변환 포함)
+app.post('/api/workplace-location', async (req, res) => {
+    try {
+        const { workplaceName, startDate, endDate } = req.body;
+
+        if (!workplaceName) {
+            return res.status(400).json({
+                success: false,
+                error: '사업장명이 필요합니다.'
+            });
+        }
+
+        console.log(`🗺️ 사업장 위치 조회 요청: ${workplaceName}`);
+
+        // 사업장 데이터 조회 (최신 데이터 기준)
+        const result = await dataCollector.queryDataByDateRange(
+            startDate || '2025-11',
+            endDate || '2025-11',
+            'pension_workplace',
+            workplaceName
+        );
+
+        if (!result.success || !result.data || result.data.length === 0) {
+            return res.json({
+                success: false,
+                error: '해당 사업장을 찾을 수 없습니다.'
+            });
+        }
+
+        // 사업장별로 그룹화하여 주소 정보 추출 (가장 최근 날짜의 가입자수 사용)
+        const workplaceMap = new Map();
+        
+        result.data.forEach(item => {
+            const key = `${item['사업장명']}|${item['사업자등록번호']}`;
+            const itemDate = item['자료생성년월'] || '';
+            
+            if (!workplaceMap.has(key)) {
+                workplaceMap.set(key, {
+                    name: item['사업장명'],
+                    regNo: item['사업자등록번호'],
+                    roadAddress: item['사업장도로명상세주소'] || '',
+                    parcelAddress: item['사업장지번상세주소'] || '',
+                    zipCode: item['우편번호'] || '',
+                    memberCount: parseInt(item['가입자수']) || 0,
+                    industry: item['사업장업종코드명'] || '',
+                    latestDate: itemDate
+                });
+            } else {
+                // 기존 데이터보다 최신 날짜인 경우 가입자수 업데이트
+                const existing = workplaceMap.get(key);
+                if (itemDate > existing.latestDate) {
+                    existing.memberCount = parseInt(item['가입자수']) || 0;
+                    existing.latestDate = itemDate;
+                    // 주소 정보도 최신 데이터로 업데이트
+                    if (item['사업장도로명상세주소']) {
+                        existing.roadAddress = item['사업장도로명상세주소'];
+                    }
+                    if (item['사업장지번상세주소']) {
+                        existing.parcelAddress = item['사업장지번상세주소'];
+                    }
+                    if (item['사업장업종코드명']) {
+                        existing.industry = item['사업장업종코드명'];
+                    }
+                }
+            }
+        });
+
+        const workplaces = Array.from(workplaceMap.values());
+        
+        // 각 사업장의 좌표 조회
+        const axios = require('axios');
+        const vworldApiKey = process.env.VWORLD_API_KEY;
+        
+        const locatedWorkplaces = [];
+        
+        for (const workplace of workplaces.slice(0, 10)) { // 최대 10개까지만 처리
+            const address = workplace.roadAddress || workplace.parcelAddress;
+            
+            if (!address || address.trim().length < 2) {
+                locatedWorkplaces.push({
+                    ...workplace,
+                    lat: null,
+                    lng: null,
+                    geocodeError: '주소 정보가 없습니다.'
+                });
+                continue;
+            }
+
+            if (!vworldApiKey || vworldApiKey === 'your_vworld_api_key_here') {
+                locatedWorkplaces.push({
+                    ...workplace,
+                    lat: null,
+                    lng: null,
+                    geocodeError: 'VWorld API 키가 설정되지 않았습니다.'
+                });
+                continue;
+            }
+
+            try {
+                // VWorld API로 좌표 조회
+                const encodedAddress = encodeURIComponent(address.trim());
+                const addressType = workplace.roadAddress ? 'road' : 'parcel';
+                const apiUrl = `https://api.vworld.kr/req/address?service=address&request=getcoord&version=2.0&crs=epsg:4326&address=${encodedAddress}&format=json&type=${addressType}&key=${vworldApiKey}`;
+
+                const response = await axios.get(apiUrl, { timeout: 5000 });
+                const geoResult = response.data;
+
+                if (geoResult.response && geoResult.response.status === 'OK' && geoResult.response.result) {
+                    const point = geoResult.response.result.point;
+                    locatedWorkplaces.push({
+                        ...workplace,
+                        lat: parseFloat(point.y),
+                        lng: parseFloat(point.x)
+                    });
+                } else {
+                    // 다른 타입으로 재시도
+                    const altType = addressType === 'road' ? 'parcel' : 'road';
+                    const altApiUrl = `https://api.vworld.kr/req/address?service=address&request=getcoord&version=2.0&crs=epsg:4326&address=${encodedAddress}&format=json&type=${altType}&key=${vworldApiKey}`;
+                    
+                    const altResponse = await axios.get(altApiUrl, { timeout: 5000 });
+                    const altResult = altResponse.data;
+                    
+                    if (altResult.response && altResult.response.status === 'OK' && altResult.response.result) {
+                        const point = altResult.response.result.point;
+                        locatedWorkplaces.push({
+                            ...workplace,
+                            lat: parseFloat(point.y),
+                            lng: parseFloat(point.x)
+                        });
+                    } else {
+                        locatedWorkplaces.push({
+                            ...workplace,
+                            lat: null,
+                            lng: null,
+                            geocodeError: '좌표 변환 실패'
+                        });
+                    }
+                }
+            } catch (geoError) {
+                console.error(`지오코딩 오류 (${workplace.name}):`, geoError.message);
+                locatedWorkplaces.push({
+                    ...workplace,
+                    lat: null,
+                    lng: null,
+                    geocodeError: geoError.message
+                });
+            }
+        }
+
+        console.log(`✅ 사업장 위치 조회 완료: ${locatedWorkplaces.length}개`);
+
+        res.json({
+            success: true,
+            data: locatedWorkplaces
+        });
+
+    } catch (error) {
+        console.error('사업장 위치 조회 오류:', error);
+        res.status(500).json({
+            success: false,
+            error: '서버 내부 오류가 발생했습니다.'
+        });
+    }
+});
+
 // 🏢 사업장명 제안 API 엔드포인트
 app.get('/api/workplace-suggestions', async (req, res) => {
     try {
